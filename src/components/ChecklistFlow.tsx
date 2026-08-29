@@ -373,7 +373,13 @@ function UploadSlot({
     setPending({ name: file.name, pct: 15 });
 
     try {
+      if (file.size > 30 * 1024 * 1024) throw new Error('That file is enormous — take a photo instead of scanning.');
       const out = await toWebp(file);
+      // Vercel caps the request body at 4.5 MB. A converted photo is ~200 KB;
+      // this only trips on a PDF or an image the browser could not re-encode.
+      if (out.size > 4 * 1024 * 1024) {
+        throw new Error('Still too large after compressing. Try a photo rather than a PDF.');
+      }
       setPending({ name: file.name, pct: 45 });
 
       const fd = new FormData();

@@ -41,3 +41,6 @@ Thumbs.db
 # Source material — not code, and the PDFs contain a real signature graphic.
 # Kept locally; do not publish to a public repo.
 sample pdf/
+
+# TypeScript incremental build artifact
+*.tsbuildinfo

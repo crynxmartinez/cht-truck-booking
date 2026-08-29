@@ -2,7 +2,7 @@
   "name": "cht-truck-booking",
   "version": "1.0.0",
   "private": true,
-  "description": "Cory Home Team truck rental system — booking, contracts, checklists and ops CRM",
+  "description": "Cory Home Team truck rental system - booking, contracts, checklists and ops CRM",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -41,6 +41,6 @@
     "typescript": "^5.7.3"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   }
 }

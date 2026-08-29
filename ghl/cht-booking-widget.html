@@ -20,7 +20,11 @@
     maxMonthsAhead: 3,                       // how far forward the calendar scrolls
     timeZone:       'America/Los_Angeles',
     pickupAddress:  '25220 Hancock Ave, Murrieta, CA 92562',
-    maxFileMB:      15
+    // Guard against loading an absurd file into a canvas.
+    maxSourceMB:    30,
+    // Vercel caps a request body at 4.5 MB. Checked AFTER conversion, because
+    // a 12 MB phone photo becomes a ~200 KB WebP and is perfectly fine.
+    maxUploadMB:    4
   };
 
   var root = host.attachShadow({ mode: 'open' });
@@ -443,7 +447,7 @@
     box.innerHTML =
       '<div class="drop" tabindex="0" role="button">' +
         '<b>Tap to upload ' + esc(label) + '</b>' +
-        '<small>JPG, PNG, HEIC or PDF &middot; up to ' + CFG.maxFileMB + ' MB</small>' +
+        '<small>JPG, PNG, HEIC or PDF &middot; a phone photo is ideal</small>' +
       '</div>' +
       '<input type="file" accept="image/*,application/pdf" capture="environment" hidden>';
 
@@ -486,8 +490,8 @@
     var errBox = root.querySelector('[data-err="' + kind + '"]');
     errBox.classList.remove('live');
 
-    if (file.size > CFG.maxFileMB * 1024 * 1024) {
-      errBox.textContent = 'That file is over ' + CFG.maxFileMB + ' MB. Try a photo instead of a scan.';
+    if (file.size > CFG.maxSourceMB * 1024 * 1024) {
+      errBox.textContent = 'That file is enormous. Take a photo of the document instead of scanning it.';
       errBox.classList.add('live');
       return;
     }
@@ -513,6 +517,10 @@
     ensureDraft()
       .then(function () { return toWebp(file, 1600, 0.82); })
       .then(function (out) {
+        if (out.size > CFG.maxUploadMB * 1024 * 1024) {
+          // Only reachable for PDFs and images the browser could not re-encode.
+          throw new Error('too-big');
+        }
         st.textContent = 'Uploading…';
         bar.style.width = '35%';
         var fd = new FormData();
@@ -528,8 +536,10 @@
             syncGo();
           });
       })
-      .catch(function () {
-        st.textContent = 'Upload failed — tap the X and try again.';
+      .catch(function (err) {
+        st.textContent = err && err.message === 'too-big'
+          ? 'Still too large after compressing. Try a photo rather than a PDF.'
+          : 'Upload failed — tap the X and try again.';
         bar.style.width = '0';
         S.files[kind] = null;
         syncGo();

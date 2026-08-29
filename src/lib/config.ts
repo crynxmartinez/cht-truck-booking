@@ -75,7 +75,12 @@ export const config = {
   sessionSecret: process.env.SESSION_SECRET || 'dev-only-insecure-session-secret',
   signingSalt: process.env.SIGNING_TOKEN_SALT || 'dev-only-salt',
 
-  maxUploadBytes: num('MAX_UPLOAD_BYTES', 15 * 1024 * 1024),
+  // Vercel caps a Serverless Function request body at 4.5 MB. Anything larger
+  // is rejected by the platform before our handler runs, so the ceiling has to
+  // sit under it. The browser downscales to WebP first, so a real photo lands
+  // around 200 KB — this only bites the passthrough path (PDFs, HEIC that the
+  // browser could not decode).
+  maxUploadBytes: num('MAX_UPLOAD_BYTES', 4 * 1024 * 1024),
 
   company: {
     name: 'Cory Home Team',

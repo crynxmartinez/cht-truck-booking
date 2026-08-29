@@ -56,9 +56,6 @@ async function handleSign(req: Request, token: string) {
     include: { booking: { include: { truck: true } } },
   });
   if (!contract) return json({ error: 'This link is not valid.' }, { status: 404 });
-  if (contract.status === 'SIGNED') {
-    return json({ ok: true, pdfUrl: contract.pdfPathname ? `${config.appUrl}/api/files/contract/${token}` : null });
-  }
   if (contract.status === 'VOID') return json({ error: 'This agreement was replaced.' }, { status: 410 });
   if (contract.booking.stage === 'CANCELLED') return json({ error: 'This booking was cancelled.' }, { status: 410 });
 
@@ -79,14 +76,6 @@ async function handleSign(req: Request, token: string) {
   const signerName = cleanString(body.signerName, 120) || fields.clientName || fields.name || '';
   const signatureDataUrl = typeof body.signatureDataUrl === 'string' ? body.signatureDataUrl : '';
 
-  if (!signerName) return json({ error: 'Please enter your name.' }, { status: 400 });
-  if (initials.length < 2) return json({ error: 'Please initial the damage waiver.' }, { status: 400 });
-  if (!/^data:image\/(png|jpeg);base64,/.test(signatureDataUrl)) {
-    return json({ error: 'Please sign before submitting.' }, { status: 400 });
-  }
-  // A signature image is small; anything huge is not a signature.
-  if (signatureDataUrl.length > 900_000) return json({ error: 'That signature image is too large.' }, { status: 413 });
-
   const isRental = contract.type === ContractType.RENTAL_AGREEMENT;
   const b = contract.booking;
 
@@ -99,6 +88,28 @@ async function handleSign(req: Request, token: string) {
     if (name && isEmail(email) && phone) addDriver = { name, email, phone };
     else return json({ error: "Please complete the additional driver's name, email and mobile." }, { status: 400 });
   }
+
+  // Already signed. Do not re-sign — but do not throw away a second driver
+  // named on this submission either. Returning a bare ok here meant a resubmit
+  // showed "we've sent the additional driver their agreement" while the server
+  // had quietly discarded them.
+  if (contract.status === 'SIGNED') {
+    const invited = addDriver ? await inviteAdditionalDriver(b.id, addDriver) : false;
+    return json({
+      ok: true,
+      alreadySigned: true,
+      additionalDriverInvited: invited,
+      pdfUrl: contract.pdfPathname ? `${config.appUrl}/api/files/contract/${token}` : null,
+    });
+  }
+
+  if (!signerName) return json({ error: 'Please enter your name.' }, { status: 400 });
+  if (initials.length < 2) return json({ error: 'Please initial the damage waiver.' }, { status: 400 });
+  if (!/^data:image\/(png|jpeg);base64,/.test(signatureDataUrl)) {
+    return json({ error: 'Please sign before submitting.' }, { status: 400 });
+  }
+  // A signature image is small; anything huge is not a signature.
+  if (signatureDataUrl.length > 900_000) return json({ error: 'That signature image is too large.' }, { status: 413 });
 
   const signedAt = new Date();
   const termsHash = hashTerms(fullTermsText());
@@ -179,40 +190,7 @@ async function handleSign(req: Request, token: string) {
   after(async () => {
   try {
     if (isRental && addDriver) {
-      await prisma.booking.update({
-        where: { id: b.id },
-        data: { additionalDriverRequested: true },
-      });
-      await prisma.additionalDriver.upsert({
-        where: { bookingId: b.id },
-        create: { bookingId: b.id, name: addDriver.name, email: addDriver.email, phone: addDriver.phone },
-        update: { name: addDriver.name, email: addDriver.email, phone: addDriver.phone },
-      });
-
-      const existing = await prisma.contract.findFirst({
-        where: { bookingId: b.id, type: ContractType.ADDITIONAL_DRIVER, status: { not: 'VOID' } },
-      });
-      if (!existing) {
-        await prisma.contract.create({
-          data: {
-            bookingId: b.id,
-            type: ContractType.ADDITIONAL_DRIVER,
-            token: newToken(),
-            signerName: addDriver.name,
-            signerEmail: addDriver.email,
-          },
-        });
-      }
-
-      await setStage(b.id, Stage.ADDITIONAL_DRIVER, 'system', 'Renter named an additional driver');
-      await notify(b.id, 'additional_driver', {
-        to: {
-          firstName: addDriver.name.split(' ')[0] ?? addDriver.name,
-          lastName: addDriver.name.split(' ').slice(1).join(' '),
-          email: addDriver.email,
-          phone: addDriver.phone,
-        },
-      });
+      await inviteAdditionalDriver(b.id, addDriver);
     } else {
       // Either the renter is driving alone, or this WAS the additional driver.
       const outstanding = await prisma.contract.count({
@@ -229,5 +207,60 @@ async function handleSign(req: Request, token: string) {
   }
   });
 
-  return json({ ok: true, pdfUrl, pickupAddress: config.pickupAddress });
+  return json({
+    ok: true,
+    pdfUrl,
+    additionalDriverInvited: Boolean(isRental && addDriver),
+    pickupAddress: config.pickupAddress,
+  });
+}
+
+
+/**
+ * Record a second driver and send them their own agreement.
+ *
+ * Their email and mobile are captured on the main contract precisely so this
+ * can go to them directly — the renter never has to forward anything.
+ *
+ * Returns false when an invite already exists, so a resubmit does not create a
+ * second contract or text them twice.
+ */
+async function inviteAdditionalDriver(
+  bookingId: string,
+  driver: { name: string; email: string; phone: string },
+): Promise<boolean> {
+  const existing = await prisma.contract.findFirst({
+    where: { bookingId, type: ContractType.ADDITIONAL_DRIVER, status: { not: 'VOID' } },
+    select: { id: true },
+  });
+
+  await prisma.booking.update({ where: { id: bookingId }, data: { additionalDriverRequested: true } });
+  await prisma.additionalDriver.upsert({
+    where: { bookingId },
+    create: { bookingId, name: driver.name, email: driver.email, phone: driver.phone },
+    update: { name: driver.name, email: driver.email, phone: driver.phone },
+  });
+
+  if (existing) return false;
+
+  await prisma.contract.create({
+    data: {
+      bookingId,
+      type: ContractType.ADDITIONAL_DRIVER,
+      token: newToken(),
+      signerName: driver.name,
+      signerEmail: driver.email,
+    },
+  });
+
+  await setStage(bookingId, Stage.ADDITIONAL_DRIVER, 'system', 'Renter named an additional driver');
+  await notify(bookingId, 'additional_driver', {
+    to: {
+      firstName: driver.name.split(' ')[0] ?? driver.name,
+      lastName: driver.name.split(' ').slice(1).join(' '),
+      email: driver.email,
+      phone: driver.phone,
+    },
+  });
+  return true;
 }

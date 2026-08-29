@@ -65,6 +65,9 @@ export function SignForm(props: SignFormProps) {
   const [fail, setFail] = useState('');
   const [done, setDone] = useState(props.alreadySigned);
   const [pdf, setPdf] = useState(props.pdfUrl ?? null);
+  // What the SERVER says happened, not what this form asked for. A resubmit
+  // used to claim the second driver had been emailed when they had not.
+  const [driverInvited, setDriverInvited] = useState(false);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setF((prev) => ({ ...prev, [k]: e.target.value }));
@@ -132,6 +135,7 @@ export function SignForm(props: SignFormProps) {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'Could not save your signature.');
       setPdf(j.pdfUrl ?? null);
+      setDriverInvited(Boolean(j.additionalDriverInvited));
       setDone(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
@@ -152,8 +156,8 @@ export function SignForm(props: SignFormProps) {
         <p className="lede">
           {isAdditional
             ? 'Thanks — you are cleared to drive this rental.'
-            : wantsAdditional === 'yes'
-              ? "We've sent the additional driver their own agreement. Once they sign, your confirmation goes out."
+            : driverInvited
+              ? `We are sending ${addDriver.name || 'your additional driver'} their own agreement now. Once they sign, your confirmation goes out.`
               : 'Your confirmation is on its way by email and text.'}
         </p>
         <div className="recap">

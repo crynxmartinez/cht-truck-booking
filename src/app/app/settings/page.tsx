@@ -1,6 +1,6 @@
 import { config } from '@/lib/config';
 import { ping } from '@/lib/ghl';
-import { blobConfigured } from '@/lib/storage';
+import { blobAuthMode, blobConfigured } from '@/lib/storage';
 import { earliestBookable, hourInOps, latestBookable, todayInOps } from '@/lib/dates';
 import { TERMS_VERSION } from '@/lib/contract-terms';
 
@@ -28,9 +28,12 @@ export default async function SettingsPage() {
     {
       label: 'Blob storage',
       ok: blobConfigured(),
-      detail: blobConfigured()
-        ? 'Connected. Uploads are being stored and converted to WebP.'
-        : 'Not connected. Add a Blob store in Vercel and redeploy — uploads are refused until then.',
+      detail:
+        blobAuthMode() === 'oidc'
+          ? 'Connected via OIDC (BLOB_STORE_ID). Uploads are stored privately as WebP. Note that OIDC only works on Vercel — for local development, pull a read-write token.'
+          : blobAuthMode() === 'token'
+            ? 'Connected via BLOB_READ_WRITE_TOKEN. Uploads are stored privately as WebP.'
+            : 'Not connected. Connect a Blob store in Vercel, then redeploy so the deployment picks up BLOB_STORE_ID — uploads are refused until it does.',
     },
     {
       label: 'Cron secret',

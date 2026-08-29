@@ -14,7 +14,25 @@ import { config } from './config';
 
 const IMAGE_TYPES = /^image\/(jpeg|png|webp|gif|avif|heic|heif|tiff|bmp)$/i;
 
-export const blobConfigured = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+/**
+ * Vercel Blob authenticates one of two ways, and a project may use either:
+ *
+ *   1. OIDC — the connection sets BLOB_STORE_ID and the runtime supplies a
+ *      short-lived Vercel OIDC token automatically. This is what you get if you
+ *      leave "Add a read-write token env var" unticked.
+ *   2. BLOB_READ_WRITE_TOKEN — the classic long-lived token, created only when
+ *      that box IS ticked. This is also the one that makes `npm run dev` work
+ *      locally, since OIDC tokens expire every 12 hours.
+ *
+ * Either is enough, so check for both. Looking only for the token would refuse
+ * every upload on an OIDC-connected project that is actually working fine.
+ */
+export const blobConfigured = () =>
+  Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+
+/** Which mechanism is in play, for the settings page to report. */
+export const blobAuthMode = (): 'token' | 'oidc' | 'none' =>
+  process.env.BLOB_READ_WRITE_TOKEN ? 'token' : process.env.BLOB_STORE_ID ? 'oidc' : 'none';
 
 export type StoredFile = {
   url: string;

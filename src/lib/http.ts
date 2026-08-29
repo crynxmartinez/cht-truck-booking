@@ -7,19 +7,61 @@ import { config } from './config';
  * cannot forget one half of it.
  */
 
-export function corsHeaders(origin: string | null): Record<string, string> {
-  const allowed =
-    origin && (config.allowedOrigins.includes(origin) || config.allowedOrigins.includes('*'))
-      ? origin
-      : config.allowedOrigins[0] ?? '';
+/**
+ * Decide whether an origin may call the public API.
+ *
+ * Supports three forms in ALLOWED_ORIGINS:
+ *   https://link.example.net   exact match
+ *   *.example.net              any subdomain (scheme-agnostic, https only)
+ *   *                          reflect whatever origin asked
+ *
+ * The wildcard form matters here because GHL funnels move between domains and
+ * subdomains, and every miss is a booking form that silently will not load.
+ */
+export function isOriginAllowed(origin: string): boolean {
+  const list = config.allowedOrigins;
+  if (list.includes('*')) return true;
+  if (list.includes(origin)) return true;
 
+  let host: string;
+  try {
+    const u = new URL(origin);
+    if (u.protocol !== 'https:' && u.hostname !== 'localhost' && u.hostname !== '127.0.0.1') return false;
+    host = u.hostname;
+  } catch {
+    return false;
+  }
+
+  return list.some((entry) => {
+    if (!entry.startsWith('*.')) return false;
+    const suffix = entry.slice(1); // "*.example.net" -> ".example.net"
+    return host.endsWith(suffix) && host.length > suffix.length;
+  });
+}
+
+export function corsHeaders(origin: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Accept',
     'Access-Control-Max-Age': '86400',
+    // Responses differ per origin, so a shared cache must not reuse one for another.
     Vary: 'Origin',
   };
-  if (allowed) headers['Access-Control-Allow-Origin'] = allowed;
+
+  if (!origin) return headers;
+
+  if (isOriginAllowed(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    return headers;
+  }
+
+  // Send no header rather than the wrong one. Echoing some other allowed origin
+  // produces "has a value X that is not equal to the supplied origin", which
+  // sends you hunting for a server bug instead of a missing allowlist entry.
+  console.warn(
+    `[cors] refused origin ${origin} — add it to ALLOWED_ORIGINS ` +
+      `(currently: ${config.allowedOrigins.join(', ') || 'empty'})`,
+  );
   return headers;
 }
 

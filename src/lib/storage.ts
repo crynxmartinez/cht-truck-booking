@@ -229,6 +229,54 @@ export async function purgeToTarget(): Promise<{ deleted: number; freedBytes: nu
 }
 
 /**
+ * Delete blobs that no Document row points at any more.
+ *
+ * The purge job above is driven off the database, which leaves a hole: Document
+ * rows cascade-delete with their Booking, so removing a booking takes the rows
+ * away and strands their blobs where nothing will ever look for them again.
+ * This sweeps the store itself and reconciles it against the table.
+ *
+ * Only blobs older than a day are considered, so an upload whose row is still
+ * being written can never be caught mid-flight.
+ */
+export async function reconcileOrphanBlobs(): Promise<{ scanned: number; deleted: number; freedBytes: number }> {
+  const cutoff = Date.now() - 24 * 3600_000;
+  let cursor: string | undefined;
+  let scanned = 0;
+  let deleted = 0;
+  let freedBytes = 0;
+
+  do {
+    const page = await list({ cursor, limit: 1000 });
+    const stale = page.blobs.filter((b) => new Date(b.uploadedAt).getTime() < cutoff);
+    scanned += stale.length;
+
+    if (stale.length) {
+      const known = await prisma.document.findMany({
+        where: { pathname: { in: stale.map((b) => b.pathname) } },
+        select: { pathname: true },
+      });
+      const keep = new Set(known.map((d) => d.pathname));
+
+      for (const b of stale) {
+        if (keep.has(b.pathname)) continue;
+        try {
+          await del(b.pathname);
+          deleted += 1;
+          freedBytes += b.size;
+        } catch {
+          // Already gone, or a permission blip — try again tomorrow.
+        }
+      }
+    }
+
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+
+  return { scanned, deleted, freedBytes };
+}
+
+/**
  * Called when a booking completes: stamp each document with the date it
  * becomes eligible for deletion. ID documents go sooner than photos, because
  * holding somebody's driver's licence longer than you need it is a liability.

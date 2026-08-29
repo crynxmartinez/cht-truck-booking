@@ -5,7 +5,7 @@ import { addDays, hourInOps, isoToDate, todayInOps } from '@/lib/dates';
 import { isAuthorisedCron } from '@/lib/auth';
 import { json } from '@/lib/http';
 import { logEvent, notify, setStage } from '@/lib/notify';
-import { purgeToTarget } from '@/lib/storage';
+import { purgeToTarget, reconcileOrphanBlobs } from '@/lib/storage';
 import { cancelBooking } from '@/lib/bookings';
 
 export const runtime = 'nodejs';
@@ -172,6 +172,13 @@ async function dailySweep(today: string) {
   out.orphansMarked = orphans.count;
 
   // --- storage
+  try {
+    // Reconcile first: a blob whose row was cascade-deleted is invisible to the
+    // quota-driven purge, so it would otherwise sit there forever.
+    out.orphanBlobs = await reconcileOrphanBlobs();
+  } catch (err) {
+    out.orphanBlobs = { error: String(err) };
+  }
   try {
     out.storage = await purgeToTarget();
   } catch (err) {

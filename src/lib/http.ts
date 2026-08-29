@@ -50,18 +50,28 @@ export function corsHeaders(origin: string | null): Record<string, string> {
 
   if (!origin) return headers;
 
-  if (isOriginAllowed(origin)) {
-    headers['Access-Control-Allow-Origin'] = origin;
-    return headers;
+  // The public booking API reflects whatever origin asks.
+  //
+  // This looks permissive, and deliberately is. CORS only restricts browsers on
+  // other websites; it does nothing against a script or curl, which can call
+  // these endpoints regardless. And it grants no privilege here: we never set
+  // Access-Control-Allow-Credentials and the API uses no cookies, so a
+  // cross-origin caller gets exactly what an anonymous one gets.
+  //
+  // What an allowlist actually bought was one silent failure mode — a GHL funnel
+  // moved to a new domain, the booking widget stops loading, nothing errors
+  // server-side, and you find out from a customer. The real protections are
+  // elsewhere: per-IP rate limits, the honeypot field, required documents,
+  // validation, and the row lock on truck assignment.
+  headers['Access-Control-Allow-Origin'] = origin;
+
+  // Still worth knowing when a page we did not expect is embedding the widget.
+  // Every booking also records its own sourceUrl, so this is traceable after
+  // the fact rather than merely blocked before it.
+  if (config.allowedOrigins.length && !isOriginAllowed(origin)) {
+    console.warn(`[cors] serving unlisted origin ${origin} (allowlist: ${config.allowedOrigins.join(', ')})`);
   }
 
-  // Send no header rather than the wrong one. Echoing some other allowed origin
-  // produces "has a value X that is not equal to the supplied origin", which
-  // sends you hunting for a server bug instead of a missing allowlist entry.
-  console.warn(
-    `[cors] refused origin ${origin} — add it to ALLOWED_ORIGINS ` +
-      `(currently: ${config.allowedOrigins.join(', ') || 'empty'})`,
-  );
   return headers;
 }
 

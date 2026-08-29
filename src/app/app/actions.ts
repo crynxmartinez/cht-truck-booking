@@ -1,10 +1,8 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 import { Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { createSession, destroySession, requireSession, verifyLogin } from '@/lib/auth';
 import { reassignTruck, NoTruckAvailableError } from '@/lib/availability';
 import { cancelBooking, completeBooking, reopenBooking } from '@/lib/bookings';
 import { logEvent, notify, setStage } from '@/lib/notify';
@@ -13,9 +11,9 @@ import { isoToDate, isIsoDate } from '@/lib/dates';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
+/** The CRM has no login, so every action is recorded as the office itself. */
 async function actor() {
-  const s = await requireSession();
-  return s.email;
+  return 'ops';
 }
 
 function done(message?: string): ActionResult {
@@ -23,25 +21,6 @@ function done(message?: string): ActionResult {
   revalidatePath('/app/attention');
   revalidatePath('/app/calendar');
   return { ok: true, message };
-}
-
-// ---------------------------------------------------------------- auth
-
-export async function login(_prev: unknown, formData: FormData): Promise<ActionResult> {
-  const email = String(formData.get('email') ?? '').trim();
-  const password = String(formData.get('password') ?? '');
-  if (!email || !password) return { ok: false, error: 'Enter your email and password.' };
-
-  const user = await verifyLogin(email, password);
-  if (!user) return { ok: false, error: 'That email and password do not match.' };
-
-  await createSession(user);
-  redirect('/app');
-}
-
-export async function logout() {
-  await destroySession();
-  redirect('/login');
 }
 
 // ---------------------------------------------------------------- bookings

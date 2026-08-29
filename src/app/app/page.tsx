@@ -2,7 +2,6 @@ import { prisma } from '@/lib/db';
 import { BOARD_STAGES } from '@/lib/stages';
 import { dateToIso, formatMedium, formatStamp } from '@/lib/dates';
 import { checklistUrl, signUrl } from '@/lib/tokens';
-import { requireSession } from '@/lib/auth';
 import { Board } from './Board';
 import type { BookingDetail, CardData } from './types';
 
@@ -11,7 +10,6 @@ export const dynamic = 'force-dynamic';
 /** Loads the full file for one booking. Called from the board when a card opens. */
 async function loadDetail(id: string): Promise<BookingDetail | null> {
   'use server';
-  await requireSession();
 
   const b = await prisma.booking.findUnique({
     where: { id },

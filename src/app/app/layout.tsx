@@ -1,16 +1,10 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { getSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { logout } from './actions';
 import './crm.css';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CrmLayout({ children }: { children: React.ReactNode }) {
-  const session = await getSession();
-  if (!session) redirect('/login');
-
   const [active, needsAttention] = await Promise.all([
     prisma.booking.count({ where: { stage: { notIn: ['COMPLETED', 'CANCELLED'] } } }),
     prisma.booking.count({
@@ -45,12 +39,7 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
         <Link href="/app/storage">Storage</Link>
         <Link href="/app/settings">Settings</Link>
 
-        <div className="nav-foot">
-          {session.name || session.email}
-          <form action={logout}>
-            <button type="submit">Sign out</button>
-          </form>
-        </div>
+        <div className="nav-foot">Cory Home Team</div>
       </nav>
 
       <div className="main">{children}</div>

@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { ChecklistPhase, ContractType, Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { createBookingWithTruck, NoTruckAvailableError } from '@/lib/availability';
@@ -137,15 +138,21 @@ export async function POST(req: Request) {
     // The booking exists; the office can repair the rest from the CRM.
   }
 
-  // ---- notify (best effort — never block the confirmation screen) --------
-  try {
-    await notify(booking.id, 'booking_received');
-    await notify(booking.id, 'contract_to_sign');
-    await setStage(booking.id, Stage.CONTRACT_SENT, 'system', 'Rental agreement sent automatically');
-  } catch (err) {
-    console.error('notify failed', err);
-    await logEvent(booking.id, 'notify_failed', String(err), 'system');
-  }
+  // ---- notify, AFTER the response has gone out ---------------------------
+  // Two messages over GoHighLevel means a contact upsert plus four sends, and
+  // that was roughly ten seconds of the customer watching a spinner for work
+  // they do not care about. The booking is already committed by this point, so
+  // the confirmation screen does not need to wait for the texts to leave.
+  after(async () => {
+    try {
+      await notify(booking.id, 'booking_received');
+      await notify(booking.id, 'contract_to_sign');
+      await setStage(booking.id, Stage.CONTRACT_SENT, 'system', 'Rental agreement sent automatically');
+    } catch (err) {
+      console.error('notify failed', err);
+      await logEvent(booking.id, 'notify_failed', String(err), 'system');
+    }
+  });
 
   return json(
     {

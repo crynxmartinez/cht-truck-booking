@@ -1,0 +1,363 @@
+// Cory Home Team — truck rental system
+// Postgres via Prisma. Dates that represent a calendar day (pickup, return,
+// blackout) are stored as @db.Date so timezone never shifts them.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------- fleet
+
+model Truck {
+  id          String   @id @default(cuid())
+  code        String   @unique // "A" / "B"
+  plate       String
+  year        Int
+  lockboxCode String
+  active      Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookings  Booking[]
+  blackouts BlackoutDate[]
+
+  @@map("trucks")
+}
+
+model BlackoutDate {
+  id        String   @id @default(cuid())
+  truckId   String
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date // inclusive
+  reason    String
+  createdAt DateTime @default(now())
+
+  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@index([truckId, startDate, endDate])
+  @@map("blackout_dates")
+}
+
+// ---------------------------------------------------------------- bookings
+
+enum Stage {
+  NEW_BOOKING
+  CONTRACT_SENT
+  ADDITIONAL_DRIVER
+  CONFIRMED
+  PICKUP_DAY
+  IN_USE
+  RETURNED
+  COMPLETED
+  CANCELLED
+}
+
+model Booking {
+  id        String @id @default(cuid())
+  reference String @unique // short human code, e.g. CHT-7K2Q
+  stage     Stage  @default(NEW_BOOKING)
+
+  truckId String?
+  truck   Truck?  @relation(fields: [truckId], references: [id])
+
+  // The rental window. blockStart == pickupDate; blockEnd is inclusive and is
+  // what availability checks overlap against.
+  pickupDate DateTime @db.Date
+  returnDate DateTime @db.Date
+  blockStart DateTime @db.Date
+  blockEnd   DateTime @db.Date
+
+  firstName String
+  lastName  String
+  email     String
+  phone     String
+
+  ghlContactId     String?
+  ghlOpportunityId String?
+
+  additionalDriverRequested Boolean @default(false)
+
+  // Operational flags, deliberately separate from stage so an overdue truck
+  // stays visible in whatever column it is stuck in.
+  overdue          Boolean   @default(false)
+  rescheduleAsked  Boolean   @default(false)
+  needsReview      Boolean   @default(false)
+  reviewNote       String?
+
+  cancelledAt     DateTime?
+  cancelledReason String?
+  completedAt     DateTime?
+
+  sourceUrl String?
+  draftId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents        Document[]
+  contracts        Contract[]
+  checklists       Checklist[]
+  additionalDriver AdditionalDriver?
+  messages         MessageLog[]
+  events           BookingEvent[]
+
+  @@index([stage])
+  @@index([pickupDate])
+  @@index([truckId, blockStart, blockEnd])
+  @@index([email])
+  @@map("bookings")
+}
+
+model AdditionalDriver {
+  id        String  @id @default(cuid())
+  bookingId String  @unique
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  name     String
+  email    String?
+  phone    String?
+  employer String?
+  employerPhone String?
+  street   String?
+  city     String?
+  state    String?
+  zip      String?
+  licenseNo String?
+  dob       String?
+  insuranceCarrier String?
+  insurancePolicyNo String?
+  insurancePhone    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("additional_drivers")
+}
+
+// ---------------------------------------------------------------- documents
+
+enum DocKind {
+  DRIVER_LICENSE
+  INSURANCE
+  CARGO
+  EXTERIOR
+  FUEL_GAUGE
+  OTHER
+  SIGNED_CONTRACT
+}
+
+enum DocPhase {
+  BOOKING
+  PICKUP
+  DROPOFF
+  CONTRACT
+}
+
+model Document {
+  id        String  @id @default(cuid())
+  bookingId String?
+  booking   Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // Uploads arrive before the booking row exists, so they are parked against a
+  // draft id and adopted when the booking is created.
+  draftId String?
+
+  kind  DocKind
+  phase DocPhase
+
+  url         String
+  pathname    String
+  contentType String
+  bytes       Int
+
+  // Set when the booking completes. The purge job only ever considers rows
+  // where this is non-null and in the past.
+  purgeEligibleAt DateTime?
+  deletedAt       DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([draftId])
+  @@index([purgeEligibleAt, deletedAt])
+  @@map("documents")
+}
+
+// ---------------------------------------------------------------- contracts
+
+enum ContractType {
+  RENTAL_AGREEMENT
+  ADDITIONAL_DRIVER
+}
+
+enum ContractStatus {
+  SENT
+  VIEWED
+  SIGNED
+  VOID
+}
+
+model Contract {
+  id        String  @id @default(cuid())
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  type   ContractType
+  status ContractStatus @default(SENT)
+
+  token String @unique
+
+  // Everything the signer typed, kept verbatim as submitted.
+  payload Json?
+
+  signerName  String?
+  signerEmail String?
+  initials    String?
+  signatureData String? @db.Text // data URL of the drawn or typed signature
+
+  // Audit trail: what they saw, from where, when.
+  termsVersion String?
+  termsHash    String?
+  ipAddress    String?
+  userAgent    String? @db.Text
+
+  sentAt   DateTime  @default(now())
+  viewedAt DateTime?
+  signedAt DateTime?
+
+  pdfUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bookingId])
+  @@index([status])
+  @@map("contracts")
+}
+
+// ---------------------------------------------------------------- checklists
+
+enum ChecklistPhase {
+  PICKUP
+  DROPOFF
+}
+
+model Checklist {
+  id        String  @id @default(cuid())
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  phase  ChecklistPhase
+  token  String         @unique
+
+  firstName String?
+  lastName  String?
+  email     String?
+  phone     String?
+
+  // "Time picked up" / "Time returned", as the renter reported it.
+  reportedTime String?
+  notes        String? @db.Text
+
+  // Partial saves: the page writes progress as they go, so losing signal
+  // mid-upload does not cost them the form.
+  draft Json?
+
+  sentAt      DateTime?
+  openedAt    DateTime?
+  submittedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bookingId, phase])
+  @@index([token])
+  @@map("checklists")
+}
+
+// ---------------------------------------------------------------- comms
+
+enum MessageChannel {
+  EMAIL
+  SMS
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model MessageLog {
+  id        String  @id @default(cuid())
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  template String // e.g. "pickup_morning"
+  channel  MessageChannel
+  status   MessageStatus @default(QUEUED)
+
+  toAddress String?
+  subject   String?
+  body      String? @db.Text
+
+  providerId String?
+  error      String? @db.Text
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  // The idempotency key. One row per booking per template per channel means a
+  // retried cron can never text somebody twice at 6 AM.
+  @@unique([bookingId, template, channel])
+  @@index([bookingId])
+  @@map("message_logs")
+}
+
+model BookingEvent {
+  id        String  @id @default(cuid())
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  type    String // stage_change, contract_signed, checklist_submitted, note...
+  detail  String? @db.Text
+  actor   String? // admin email, "system", or "renter"
+  meta    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([bookingId, createdAt])
+  @@map("booking_events")
+}
+
+// ---------------------------------------------------------------- admin
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  role         String   @default("admin")
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  @@map("admin_users")
+}
+
+// A tiny key/value table so settings the office changes (lockbox codes,
+// feature flags) do not need a redeploy.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}

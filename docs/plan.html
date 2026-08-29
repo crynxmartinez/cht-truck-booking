@@ -1,0 +1,763 @@
+<title>CHT Truck System Build Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --paper:#FBFBFA; --surface:#FFFFFF; --sunk:#F3F3F1;
+  --ink:#17181A; --ink-2:#3D4046; --mut:#6B6E73; --faint:#93969B;
+  --rule:#E4E5E7; --rule-2:#D2D4D7;
+  --red:#D6001C; --red-2:#A80016; --red-wash:#FDF2F3;
+  --grn:#0F7B4F; --grn-wash:#EEF7F2;
+  --amb:#8F5E0A; --amb-wash:#FBF4E7;
+  --blu:#1F5B99; --blu-wash:#EFF4FA;
+  --shadow:0 1px 2px rgba(16,18,22,.05),0 8px 24px rgba(16,18,22,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#131416; --surface:#1A1C1F; --sunk:#202225;
+    --ink:#EDEEF0; --ink-2:#C3C6CA; --mut:#9AA0A6; --faint:#767B81;
+    --rule:#2A2D31; --rule-2:#3A3E43;
+    --red:#FF4257; --red-2:#FF7484; --red-wash:#2A1418;
+    --grn:#3ECF8E; --grn-wash:#12241C;
+    --amb:#E0A64A; --amb-wash:#261D0F;
+    --blu:#6FB0F5; --blu-wash:#111C29;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#131416; --surface:#1A1C1F; --sunk:#202225;
+  --ink:#EDEEF0; --ink-2:#C3C6CA; --mut:#9AA0A6; --faint:#767B81;
+  --rule:#2A2D31; --rule-2:#3A3E43;
+  --red:#FF4257; --red-2:#FF7484; --red-wash:#2A1418;
+  --grn:#3ECF8E; --grn-wash:#12241C;
+  --amb:#E0A64A; --amb-wash:#261D0F;
+  --blu:#6FB0F5; --blu-wash:#111C29;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Source Serif 4",Georgia,serif; font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+h1,h2,h3,h4,.ui{font-family:Archivo,"Helvetica Neue",Arial,sans-serif}
+
+/* ---------- top bar ---------- */
+.bar{
+  position:sticky; top:0; z-index:40; background:color-mix(in srgb,var(--paper) 88%,transparent);
+  backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid var(--rule);
+}
+.bar .in{max-width:1180px;margin:0 auto;padding:11px 28px;display:flex;align-items:center;gap:18px}
+.mark{font-family:Archivo;font-weight:800;letter-spacing:.14em;font-size:12px;white-space:nowrap}
+.mark em{font-style:normal;color:var(--red)}
+.bar nav{margin-left:auto;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.bar nav::-webkit-scrollbar{display:none}
+.bar a{
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--mut);
+  text-decoration:none; padding:5px 9px; border-radius:6px; white-space:nowrap;
+}
+.bar a:hover{color:var(--ink);background:var(--sunk)}
+.bar a:focus-visible{outline:2px solid var(--red);outline-offset:1px}
+
+/* ---------- shell ---------- */
+.page{max-width:1180px;margin:0 auto;padding:0 28px 120px}
+.doc{max-width:70ch}
+section{padding-top:58px;scroll-margin-top:64px}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:500;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--red);display:flex;align-items:center;gap:10px;margin-bottom:12px;
+}
+.eyebrow::after{content:"";flex:1;height:1px;background:var(--rule);max-width:200px}
+h2{font-size:clamp(23px,2.6vw,30px);font-weight:700;letter-spacing:-.022em;margin:0 0 10px;text-wrap:balance;line-height:1.18}
+h3{font-size:17.5px;font-weight:700;letter-spacing:-.01em;margin:34px 0 8px;text-wrap:balance}
+h4{font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--mut);margin:26px 0 8px;font-family:"IBM Plex Mono",monospace}
+p{margin:0 0 14px}
+.lead{font-size:19px;color:var(--ink-2);line-height:1.58}
+strong{font-weight:600;color:var(--ink)}
+a.link{color:var(--red);text-decoration-thickness:1px;text-underline-offset:2px}
+code{
+  font-family:"IBM Plex Mono",monospace;font-size:.855em;background:var(--sunk);
+  border:1px solid var(--rule);border-radius:4px;padding:1px 5px;color:var(--ink-2);
+}
+
+/* ---------- hero ---------- */
+.hero{padding:62px 0 6px;border-bottom:1px solid var(--rule)}
+.hero h1{
+  font-size:clamp(38px,6.4vw,68px);font-weight:800;letter-spacing:-.038em;line-height:1.02;
+  margin:0 0 18px;text-wrap:balance;max-width:15ch;
+}
+.hero h1 em{font-style:normal;color:var(--red)}
+.hero .lead{max-width:60ch;margin-bottom:26px}
+.facts{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:0;
+  border-top:1px solid var(--rule);margin-top:30px;
+}
+.facts div{padding:16px 20px 18px;border-right:1px solid var(--rule)}
+.facts div:last-child{border-right:0}
+.facts dt{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+.facts dd{margin:0;font-family:Archivo;font-weight:600;font-size:15px;letter-spacing:-.01em}
+
+/* ---------- callouts ---------- */
+.call{
+  border:1px solid var(--rule);border-left:3px solid var(--mut);border-radius:0 10px 10px 0;
+  background:var(--surface);padding:16px 20px;margin:22px 0;font-size:16px;
+}
+.call .t{font-family:Archivo;font-weight:700;font-size:13px;letter-spacing:.02em;margin-bottom:5px;display:flex;gap:8px;align-items:baseline}
+.call p:last-child{margin-bottom:0}
+.call.warn{border-left-color:var(--red);background:var(--red-wash)}
+.call.warn .t{color:var(--red-2)}
+.call.tip{border-left-color:var(--grn);background:var(--grn-wash)}
+.call.tip .t{color:var(--grn)}
+.call.note{border-left-color:var(--blu);background:var(--blu-wash)}
+.call.note .t{color:var(--blu)}
+.call.hold{border-left-color:var(--amb);background:var(--amb-wash)}
+.call.hold .t{color:var(--amb)}
+
+/* ---------- tables ---------- */
+.scroll{overflow-x:auto;margin:20px 0;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;font-family:Archivo;font-weight:500}
+th{
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint);text-align:left;padding:11px 16px;border-bottom:1px solid var(--rule-2);white-space:nowrap;background:var(--sunk);
+}
+td{padding:11px 16px;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2)}
+tbody tr:last-child td{border-bottom:0}
+td:first-child{color:var(--ink);font-weight:600;white-space:nowrap}
+td .mono,th .mono{font-size:13px}
+.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+
+/* ---------- chips ---------- */
+.chip{
+  display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;padding:2.5px 7px;border-radius:5px;
+  border:1px solid var(--rule-2);color:var(--mut);background:var(--sunk);white-space:nowrap;
+}
+.chip.red{color:var(--red-2);background:var(--red-wash);border-color:color-mix(in srgb,var(--red) 28%,transparent)}
+.chip.grn{color:var(--grn);background:var(--grn-wash);border-color:color-mix(in srgb,var(--grn) 30%,transparent)}
+.chip.amb{color:var(--amb);background:var(--amb-wash);border-color:color-mix(in srgb,var(--amb) 32%,transparent)}
+.chip.blu{color:var(--blu);background:var(--blu-wash);border-color:color-mix(in srgb,var(--blu) 30%,transparent)}
+
+/* ---------- stage rail ---------- */
+.rail{display:flex;gap:0;overflow-x:auto;padding:4px 0 16px;margin:22px 0 4px;scrollbar-width:thin}
+.stop{
+  flex:0 0 214px;border:1px solid var(--rule);border-right:0;background:var(--surface);
+  padding:14px 16px 16px;position:relative;
+}
+.stop:first-child{border-radius:10px 0 0 10px}
+.stop:last-child{border-right:1px solid var(--rule);border-radius:0 10px 10px 0}
+.stop .n{
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;color:var(--faint);
+  letter-spacing:.1em;display:block;margin-bottom:7px;
+}
+.stop h5{font-family:Archivo;font-size:14.5px;font-weight:700;margin:0 0 7px;letter-spacing:-.008em;color:var(--ink)}
+.stop p{font-size:13.5px;line-height:1.48;color:var(--mut);margin:0 0 9px}
+.stop .exit{
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;line-height:1.45;color:var(--ink-2);
+  border-top:1px dashed var(--rule-2);padding-top:8px;
+}
+.stop .exit b{color:var(--faint);font-weight:600;display:block;letter-spacing:.08em;text-transform:uppercase;font-size:9.5px;margin-bottom:3px}
+.stop::after{
+  content:"";position:absolute;right:-6px;top:50%;width:10px;height:10px;
+  border-top:1px solid var(--rule-2);border-right:1px solid var(--rule-2);
+  transform:translateY(-50%) rotate(45deg);background:var(--surface);z-index:2;
+}
+.stop:last-child::after{display:none}
+.stop.done{background:var(--grn-wash)}
+.stop.act{background:var(--red-wash)}
+
+/* ---------- message cards ---------- */
+.msg{border:1px solid var(--rule);border-radius:10px;background:var(--surface);margin:16px 0;overflow:hidden}
+.msg .hd{
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:11px 16px;
+  border-bottom:1px solid var(--rule);background:var(--sunk);
+}
+.msg .hd b{font-family:Archivo;font-size:14px;font-weight:700;letter-spacing:-.005em}
+.msg .hd .when{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--faint)}
+.msg .bd{padding:15px 18px 17px}
+.msg .bd + .bd{border-top:1px dashed var(--rule-2)}
+.msg .subj{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--mut);margin-bottom:9px}
+.msg pre{
+  font-family:"IBM Plex Mono",monospace;font-size:13px;line-height:1.62;white-space:pre-wrap;
+  margin:0;color:var(--ink-2);
+}
+.msg .v{color:var(--red);font-weight:500}
+
+/* ---------- lists ---------- */
+ul.tick,ol.steps{padding-left:0;list-style:none;margin:14px 0}
+ul.tick li{position:relative;padding-left:24px;margin-bottom:9px}
+ul.tick li::before{
+  content:"";position:absolute;left:6px;top:11px;width:5px;height:5px;border-radius:50%;background:var(--red);
+}
+ol.steps{counter-reset:s}
+ol.steps li{counter-increment:s;position:relative;padding-left:36px;margin-bottom:13px}
+ol.steps li::before{
+  content:counter(s,decimal-leading-zero);position:absolute;left:0;top:2px;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--red);
+  border:1px solid var(--rule-2);border-radius:5px;padding:1px 5px;background:var(--surface);
+}
+
+/* ---------- phase grid ---------- */
+.phases{display:grid;gap:0;border:1px solid var(--rule);border-radius:10px;overflow:hidden;margin:22px 0;background:var(--surface)}
+.ph{display:grid;grid-template-columns:112px 1fr;gap:0;border-bottom:1px solid var(--rule)}
+.ph:last-child{border-bottom:0}
+.ph .k{
+  padding:16px 14px;border-right:1px solid var(--rule);background:var(--sunk);
+}
+.ph .k b{font-family:Archivo;font-size:13px;font-weight:700;display:block;letter-spacing:-.005em}
+.ph .k span{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--faint);letter-spacing:.06em}
+.ph .v{padding:15px 18px}
+.ph .v p{margin:0 0 8px;font-size:15.5px}
+.ph .v p:last-child{margin:0}
+.ph .v ul{margin:6px 0 0;padding-left:18px;font-size:15px;color:var(--ink-2)}
+.ph .v li{margin-bottom:4px}
+@media(max-width:640px){.ph{grid-template-columns:1fr}.ph .k{border-right:0;border-bottom:1px solid var(--rule);display:flex;gap:10px;align-items:baseline}}
+
+/* ---------- calendar demo ---------- */
+.calx{display:flex;gap:3px;margin:18px 0 6px;overflow-x:auto;padding-bottom:6px}
+.calx div{
+  flex:0 0 66px;border:1px solid var(--rule);border-radius:8px;padding:8px 6px;text-align:center;
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;background:var(--surface);
+}
+.calx div b{display:block;font-family:Archivo;font-size:15px;font-weight:700;color:var(--ink);margin-bottom:3px}
+.calx div span{color:var(--faint);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;display:block;line-height:1.35}
+.calx div.a{background:var(--red-wash);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.calx div.a span{color:var(--red-2)}
+.calx div.b{background:var(--amb-wash);border-color:color-mix(in srgb,var(--amb) 30%,transparent)}
+.calx div.b span{color:var(--amb)}
+.calx div.f{background:var(--grn-wash);border-color:color-mix(in srgb,var(--grn) 30%,transparent)}
+.calx div.f span{color:var(--grn)}
+
+hr.sep{border:0;border-top:1px solid var(--rule);margin:0}
+.foot{margin-top:70px;padding-top:26px;border-top:1px solid var(--rule);font-size:14px;color:var(--faint);font-family:Archivo}
+
+@media(max-width:720px){
+  body{font-size:16px}
+  .page{padding:0 18px 90px}
+  .bar .in{padding:10px 18px}
+  .bar nav{display:none}
+  .facts div{border-right:0;border-bottom:1px solid var(--rule)}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="bar"><div class="in">
+  <span class="mark">C<em>&#8962;</em>RY HOME TEAM <span style="color:var(--faint)">/ TRUCK OPS</span></span>
+  <nav>
+    <a href="#shape">Shape</a><a href="#rules">Rules</a><a href="#stages">Stages</a>
+    <a href="#data">Data</a><a href="#sign">Contracts</a><a href="#check">Checklists</a>
+    <a href="#msg">Messages</a><a href="#clock">Clock</a><a href="#store">Storage</a>
+    <a href="#ghl">GHL</a><a href="#better">Upgrades</a><a href="#build">Build</a><a href="#risk">Risks</a>
+  </nav>
+</div></div>
+
+<div class="page">
+
+<header class="hero doc">
+  <h1>Two trucks, <em>zero</em> paperwork.</h1>
+  <p class="lead">A booking widget inside GoHighLevel, a signing-and-checklist site, and a CRM board that moves a renter from “I need a truck” to “thanks, see you next move” without anyone emailing a PDF.</p>
+  <dl class="facts">
+    <div><dt>Fleet</dt><dd>Truck A &middot; Truck B</dd></div>
+    <div><dt>Block length</dt><dd>3 calendar days</dd></div>
+    <div><dt>Yard</dt><dd>Murrieta, CA</dd></div>
+    <div><dt>Clock</dt><dd>America/Los_Angeles</dd></div>
+    <div><dt>Pipeline</dt><dd>8 stages</dd></div>
+  </dl>
+</header>
+
+<!-- =============================================== 0 SECURITY -->
+<section id="sec" class="doc">
+  <div class="call warn">
+    <div class="t">Do this before anything else</div>
+    <p>You pasted a live Prisma Postgres connection string and a GoHighLevel private-integration token into chat. Treat both as compromised and <strong>rotate them now</strong> — a new database password in the Prisma console, a new token in GHL. Everything below reads them from environment variables; no secret ever goes in the repo, in the GHL widget, or in this document.</p>
+  </div>
+</section>
+
+<!-- =============================================== 1 SHAPE -->
+<section id="shape" class="doc">
+  <div class="eyebrow">01 &mdash; The shape of it</div>
+  <h2>Three surfaces, one database</h2>
+  <p>Everything is one Next.js app on Vercel talking to one Postgres database. GoHighLevel is not the system of record — it is the phone and the mailbox.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Surface</th><th>Lives at</th><th>Who touches it</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Booking widget</td><td class="mono">Your GHL funnel page</td><td>The public</td><td>Pick a date, give details, upload licence + insurance. Pure HTML/JS, calls our API.</td></tr>
+      <tr><td>Signing &amp; checklists</td><td class="mono">cht-truck-booking.vercel.app</td><td>Renters, by tokenised link</td><td>Rental agreement, additional-driver agreement, pickup checklist, drop-off checklist.</td></tr>
+      <tr><td>Ops CRM</td><td class="mono">/app &mdash; password protected</td><td>You and Diana</td><td>Left-nav layout, stage board, click a card for the full file.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>Flow of a single rental</h4>
+  <p class="mono" style="font-size:13px;line-height:2.1;color:var(--ink-2)">
+    GHL widget &rarr; <span style="color:var(--red)">POST /api/public/bookings</span> &rarr; Postgres row + truck auto-assigned<br>
+    &rarr; GHL contact upserted &rarr; contract link sent by email + SMS<br>
+    &rarr; renter signs on our site &rarr; confirmation fires &rarr; 6:00 AM pickup text<br>
+    &rarr; checklists in &rarr; thank-you &rarr; truck released back to the calendar
+  </p>
+</section>
+
+<!-- =============================================== 2 RULES -->
+<section id="rules" class="doc">
+  <div class="eyebrow">02 &mdash; Booking rules</div>
+  <h2>How the calendar actually blocks</h2>
+  <p>One booking blocks <strong>one truck for three consecutive calendar days</strong> starting on the pickup date. The third day is the return-and-rest day: the renter brings it back, you inspect and refuel, and the truck goes out again the next morning.</p>
+
+  <h4>Worked example &mdash; Truck A booked for Monday</h4>
+  <div class="calx">
+    <div class="a"><b>Mon</b><span>Pickup<br>Day 1</span></div>
+    <div class="a"><b>Tue</b><span>In use<br>Day 2</span></div>
+    <div class="b"><b>Wed</b><span>Return<br>+ rest</span></div>
+    <div class="f"><b>Thu</b><span>Free<br>again</span></div>
+    <div class="f"><b>Fri</b><span>Free</span></div>
+  </div>
+  <p style="font-size:15px;color:var(--mut)">Truck B stays fully bookable across all five days. A date shows as available while <em>at least one</em> truck has no overlapping block — so most dates offer capacity 2, and only go dark when both trucks are out.</p>
+
+  <div class="call note">
+    <div class="t">Confirm this reading</div>
+    <p>You said “3 days period — the booking date and allowance so the truck can rest.” I have built that as <strong>pickup + 2 days, return due on day 3, free on day 4</strong>. If you actually mean three <em>full use</em> days with a separate rest day on top, it is a one-line change: <code>RENTAL_BLOCK_DAYS = 4</code>. Say the word and I flip it.</p>
+  </div>
+
+  <ul class="tick">
+    <li><strong>Lead time.</strong> Earliest bookable date is tomorrow. Same-day is off by default so nobody books at 11 PM for 6 AM.</li>
+    <li><strong>Horizon.</strong> Calendar scrolls three months forward, no further.</li>
+    <li><strong>Blackouts.</strong> You can take either truck off the calendar for a service window from the CRM, and it stops being offered immediately.</li>
+    <li><strong>Race protection.</strong> Two people submitting for the last truck in the same second is handled inside a database transaction that locks the truck row — one wins, the other gets a clean “that date just went” message rather than a double booking.</li>
+  </ul>
+</section>
+
+<!-- =============================================== 3 STAGES -->
+<section id="stages">
+  <div class="doc">
+    <div class="eyebrow">03 &mdash; Pipeline</div>
+    <h2>Eight stages, one card per renter</h2>
+    <p>Each rental is a card. Click it and a modal opens with their details, their uploads, every contract they signed, both checklists, and a timestamped log of every email and text the system sent. Cards advance themselves; you can always drag one back.</p>
+  </div>
+
+  <div class="rail">
+    <div class="stop act"><span class="n">01</span><h5>New Booking</h5><p>Form submitted, licence and insurance in, truck auto-assigned.</p><div class="exit"><b>Advances when</b>Contract is sent (automatic, ~instant)</div></div>
+    <div class="stop"><span class="n">02</span><h5>Contract Sent</h5><p>Rental agreement link is out by email and SMS. Nudged at 24h and 48h.</p><div class="exit"><b>Advances when</b>Renter signs</div></div>
+    <div class="stop"><span class="n">03</span><h5>Additional Driver</h5><p>Only if they answered yes. Second driver gets their own link.</p><div class="exit"><b>Advances when</b>Second driver signs</div></div>
+    <div class="stop"><span class="n">04</span><h5>Confirmed</h5><p>All signatures in. Confirmation email + SMS fired. Truck is locked to the date.</p><div class="exit"><b>Advances when</b>Clock hits 6:00 AM on pickup day</div></div>
+    <div class="stop"><span class="n">05</span><h5>Pickup Day</h5><p>Lockbox code texted. Pickup checklist link live.</p><div class="exit"><b>Advances when</b>Pickup checklist submitted</div></div>
+    <div class="stop"><span class="n">06</span><h5>In Use</h5><p>Truck is out. Photos on file. Drop-off link scheduled.</p><div class="exit"><b>Advances when</b>Drop-off checklist submitted</div></div>
+    <div class="stop"><span class="n">07</span><h5>Returned</h5><p>Return photos and fuel gauge in. Awaiting your once-over.</p><div class="exit"><b>Advances when</b>You mark it clear, or auto after 48h</div></div>
+    <div class="stop done"><span class="n">08</span><h5>Completed</h5><p>Thank-you sent. Truck released. File archived.</p><div class="exit"><b>Then</b>Photos enter the purge queue</div></div>
+  </div>
+
+  <div class="doc">
+    <h4>Off-board states</h4>
+    <p><span class="chip red">Overdue</span> <span class="chip amb">Reschedule requested</span> <span class="chip">Cancelled</span> <span class="chip blu">Needs review</span></p>
+    <p style="font-size:15px;color:var(--mut)">These are filters and badges, not columns — an overdue truck should still be visible in whatever stage it is stuck in, not hidden in a sidebar.</p>
+  </div>
+</section>
+
+<!-- =============================================== 4 DATA -->
+<section id="data" class="doc">
+  <div class="eyebrow">04 &mdash; Data model</div>
+  <h2>What Prisma holds</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Model</th><th>Carries</th></tr></thead>
+    <tbody>
+      <tr><td>Truck</td><td>Code A/B, plate (<span class="mono">764302D</span> / <span class="mono">705921E</span>), year (2022 / 2021), current lockbox code, active flag</td></tr>
+      <tr><td>Booking</td><td>Public reference, stage, truck, pickup date, block start/end, renter name / email / phone, GHL contact id, additional-driver flag, cancellation</td></tr>
+      <tr><td>Document</td><td>Kind (licence, insurance, cargo, exterior, fuel gauge, other), phase (booking / pickup / dropoff), blob URL, bytes, purge-eligible date</td></tr>
+      <tr><td>Contract</td><td>Type (Rental A / Rental B / Additional Driver), signing token, status, every field they filled, signature image, initials, IP, user-agent, signed timestamp, text version hash, final PDF URL</td></tr>
+      <tr><td>AdditionalDriver</td><td>Name, phone, employer, address, licence no., DOB, insurance carrier, policy no. &mdash; plus their own email so we can reach them directly</td></tr>
+      <tr><td>Checklist</td><td>Phase, submitted-by details, time in/out, linked photos, free-text notes</td></tr>
+      <tr><td>BlackoutDate</td><td>Truck, date range, reason (service, repair, personal use)</td></tr>
+      <tr><td>MessageLog</td><td>Booking, channel, template, provider id, sent timestamp, delivery status &mdash; the audit trail behind every card</td></tr>
+      <tr><td>AdminUser</td><td>Email, password hash, role. Two or three accounts, nothing fancy.</td></tr>
+    </tbody>
+  </table></div>
+  <p style="font-size:15px;color:var(--mut)">Every outbound message writes a <code>MessageLog</code> row keyed by booking + template, and the sender checks for that row first. A cron that retries can never text someone twice at 6 AM.</p>
+</section>
+
+<!-- =============================================== 5 CONTRACTS -->
+<section id="sign" class="doc">
+  <div class="eyebrow">05 &mdash; Contracts</div>
+  <h2>The PDFs become web pages</h2>
+  <p>I read all ten sample PDFs. They are three documents wearing different filenames:</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Document</th><th>Pages</th><th>What it contains</th></tr></thead>
+    <tbody>
+      <tr><td>Truck Rental Agreement</td><td class="num">5</td><td>Data page (renter, addresses, licence, DOB, insurance, truck no. + plate + year, dispatched/received condition boxes), the 13-clause Rental Agreement terms, and the 13-section Waiver &amp; Release of Liability</td></tr>
+      <tr><td>Additional Driver Agreement</td><td class="num">5</td><td>Same terms and waiver, but the data page collects the second driver plus <em>“name of the person who booked the rental”</em></td></tr>
+      <tr><td>Truck A vs Truck B</td><td class="num">&mdash;</td><td>Identical except the truck block. A is plate 764302D / 2022; B is plate 705921E / 2021 and carries a Date &amp; Time Out / In pair instead of Return / Pickup dates.</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>So we build <strong>one contract template</strong> with the truck block swapped in from the database, not two. Renter opens <code>/sign/&lt;token&gt;</code> and gets:</p>
+
+  <ol class="steps">
+    <li><strong>Their details, already filled.</strong> Name, phone, email carried over from the booking. They complete only what we cannot know: employer, old and new address, licence number, date of birth, insurance carrier, contact and policy number.</li>
+    <li><strong>Initials on the damage waiver.</strong> The $2,500 comprehensive/collision notice gets its own initials box, exactly as the paper form does.</li>
+    <li><strong>The full terms, scrollable.</strong> Both the 13 rental clauses and the waiver, verbatim. Signing is disabled until they have scrolled to the bottom — that is what makes “I have read and agree” defensible.</li>
+    <li><strong>Additional driver — yes or no.</strong> If yes, we ask for that driver’s name, mobile and email <em>right there</em>, then send them their own link. The renter never has to forward anything.</li>
+    <li><strong>Signature.</strong> Draw with a finger or type a name, plus the date. Diana’s counter-signature is pre-applied from the stored graphic.</li>
+    <li><strong>Locked PDF.</strong> On submit we generate the finished document server-side, store it, attach it to the confirmation email, and show it on the CRM card.</li>
+  </ol>
+
+  <div class="call tip">
+    <div class="t">Why this holds up better than DocuSign for you</div>
+    <p>We record the signer’s IP, browser, exact timestamp and a hash of the precise contract wording they saw. Version the terms and you can prove, two years later, what a specific person agreed to — with none of the per-envelope cost.</p>
+  </div>
+</section>
+
+<!-- =============================================== 6 CHECKLISTS -->
+<section id="check" class="doc">
+  <div class="eyebrow">06 &mdash; Checklists</div>
+  <h2>Same six screens, two moments</h2>
+  <p>Rebuilt from your existing forms, at <code>/checklist/&lt;token&gt;</code>. The token knows whether it is a pickup or a drop-off and swaps the wording; the structure is identical.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Screen</th><th>Pickup</th><th>Drop-off</th></tr></thead>
+    <tbody>
+      <tr><td>1. Intro</td><td>“Truck Pickup Checklist” — complete before you drive off</td><td>“Truck Return Checklist” — your existing copy</td></tr>
+      <tr><td>2. Basic info</td><td>Name, phone, email + <strong>Time Picked Up</strong></td><td>Name, phone, email + <strong>Time Returned</strong></td></tr>
+      <tr><td>3. Lockbox</td><td>Open cover, enter code, turn the black dial counter-clockwise</td><td>Same, for returning the keys</td></tr>
+      <tr><td>4. Cargo photos</td><td>Cargo space + anything else worth documenting</td><td>Same</td></tr>
+      <tr><td>5. Exterior</td><td class="mono" style="color:var(--grn)">RECOMMENDED &mdash; four corners</td><td class="mono" style="color:var(--grn)">RECOMMENDED &mdash; four corners</td></tr>
+      <tr><td>6. Fuel gauge</td><td class="mono" style="color:var(--faint)">Off, per your spec</td><td>Dashboard photo, required</td></tr>
+      <tr><td>7. Submit</td><td>Advances the card to In Use</td><td>Advances to Returned, fires the thank-you</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="call hold">
+    <div class="t">Two things I would change here</div>
+    <p><strong>Keep the fuel gauge on pickup.</strong> Your own contract says “please return the gas level to the way it was received,” and the form has a Dispatched row next to the Received row. Without a pickup photo you have no baseline, so that clause is unenforceable. It is one extra tap.</p>
+    <p style="margin-bottom:0"><strong>Add four exterior corner photos to both.</strong> Your intro copy already promises “interior and exterior,” but the form only captures cargo space. With a $2,500 renter deductible, an undocumented pre-existing dent is money you eat. This is the single highest-value addition in the whole build.</p>
+  </div>
+
+  <p style="font-size:15px;color:var(--mut)">Both are built as config flags, so they default to your spec and you can switch them on from the CRM without a deploy.</p>
+</section>
+
+<!-- =============================================== 7 MESSAGES -->
+<section id="msg" class="doc">
+  <div class="eyebrow">07 &mdash; Messages</div>
+  <h2>Every email and text, written out</h2>
+  <p>All of it goes out through GoHighLevel against an upserted contact, so it lands in the same conversation thread as everything else you have ever sent them. <span class="v mono" style="font-size:13px">{{tokens}}</span> are filled from the booking.</p>
+
+  <div class="msg">
+    <div class="hd"><span class="chip">01</span><b>Booking received</b><span class="chip blu">Email + SMS</span><span class="when">immediately</span></div>
+    <div class="bd"><div class="subj">Subject &mdash; We’ve got your truck request for <span class="v">{{pickup_date}}</span></div>
+    <pre>Hi <span class="v">{{first_name}}</span>,
+
+Your 3-day truck rental request is in. Nothing is locked yet — your
+rental agreement is on its way in a separate message. Sign it and the
+truck is yours.
+
+Pickup: 25220 Hancock Ave, Murrieta CA 92562
+Reference: <span class="v">{{reference}}</span>
+
+Diana
+Cory Home Team</pre></div>
+    <div class="bd"><pre>Hi <span class="v">{{first_name}}</span>, we got your truck request for <span class="v">{{pickup_date}}</span>. Your rental
+agreement is on its way — sign it and you're locked in. — Diana, CHT</pre></div>
+  </div>
+
+  <div class="msg">
+    <div class="hd"><span class="chip">02</span><b>Rental agreement to sign</b><span class="chip blu">Email + SMS</span><span class="when">seconds later</span></div>
+    <div class="bd"><div class="subj">Subject &mdash; Sign your truck rental agreement (2 minutes)</div>
+    <pre>Hi <span class="v">{{first_name}}</span>,
+
+Here's your rental agreement for Truck <span class="v">{{truck_code}}</span> on <span class="v">{{pickup_date}}</span>:
+
+<span class="v">{{sign_url}}</span>
+
+Have your driver's licence and insurance card handy — we ask for the
+policy number. It takes about two minutes on a phone.
+
+Diana
+Cory Home Team</pre></div>
+    <div class="bd"><pre>Hi <span class="v">{{first_name}}</span>, here's your Cory Home Team rental agreement for
+<span class="v">{{pickup_date}}</span>: <span class="v">{{sign_url}}</span> — about 2 min. Diana</pre></div>
+  </div>
+
+  <div class="msg">
+    <div class="hd"><span class="chip">03</span><b>Additional driver</b><span class="chip blu">Email + SMS</span><span class="when">on request</span></div>
+    <div class="bd"><pre>Hi <span class="v">{{driver_first_name}}</span>, <span class="v">{{renter_name}}</span> listed you as an additional driver
+on a Cory Home Team truck rental for <span class="v">{{pickup_date}}</span>. You'll need to sign
+before you can drive: <span class="v">{{sign_url}}</span> — Diana</pre></div>
+  </div>
+
+  <div class="msg">
+    <div class="hd"><span class="chip grn">04</span><b>Rental confirmed</b><span class="chip blu">Email + SMS</span><span class="when">on final signature</span></div>
+    <div class="bd"><div class="subj">Subject &mdash; Your Truck Rental Confirmation</div>
+    <pre>Your Truck Rental Confirmation
+
+Date: <span class="v">{{pickup_date}}</span>
+
+Pickup Location: 25220 Hancock Ave Murrieta CA 92562
+
+You'll get a text at 6AM on your rental day
+
+Get the code to unlock the lockbox and get the keys
+(lockbox on driver's side window)
+
+Submit required photos before driving off
+
+No need to go at 6AM — just head over when it's convenient
+for you that day!
+
+Need to cancel? Reply RESCHEDULE to let us know.</pre></div>
+    <div class="bd"><pre>Hi <span class="v">{{first_name}}</span>, Your 3 Day Truck Rental Booking is already approved.
+
+Truck pick up date: <span class="v">{{pickup_date}}</span>
+We will send you an email and SMS on the pick up date for the
+instruction and guides.
+
+Diana</pre></div>
+  </div>
+
+  <div class="msg">
+    <div class="hd"><span class="chip red">05</span><b>Pickup morning</b><span class="chip blu">Email + SMS</span><span class="when">6:00 AM Pacific</span></div>
+    <div class="bd"><div class="subj">Subject &mdash; Your truck is ready — checklist inside</div>
+    <pre>Good morning <span class="v">{{first_name}}</span>,
+
+Truck <span class="v">{{truck_code}}</span> is waiting at 25220 Hancock Ave, Murrieta CA 92562.
+
+Lockbox code: <span class="v">{{lockbox_code}}</span>
+The lockbox is on the driver's side window. Open the cover, type the
+code (each number clicks), then turn the black dial counter-clockwise.
+
+Before you drive off, run the pickup checklist — it takes a minute and
+protects you from being charged for damage that was already there:
+
+<span class="v">{{pickup_checklist_url}}</span>
+
+Come by whenever suits you today. Truck is due back <span class="v">{{return_date}}</span>.
+
+Diana
+Cory Home Team</pre></div>
+    <div class="bd"><pre>Good morning <span class="v">{{first_name}}</span> — Truck <span class="v">{{truck_code}}</span> is ready. Lockbox code
+<span class="v">{{lockbox_code}}</span>, driver's side window. Photos before you drive off:
+<span class="v">{{pickup_checklist_url}}</span> Come by whenever works today. — Diana</pre></div>
+  </div>
+
+  <div class="msg">
+    <div class="hd"><span class="chip amb">06</span><b>Return day</b><span class="chip blu">Email + SMS</span><span class="when">7:00 AM Pacific, return day</span></div>
+    <div class="bd"><div class="subj">Subject &mdash; Truck <span class="v">{{truck_code}}</span> is due back today</div>
+    <pre>Hi <span class="v">{{first_name}}</span>,
+
+Truck <span class="v">{{truck_code}}</span> is due back today at 25220 Hancock Ave, Murrieta.
+
+Two things before you go:
+  1. Top the fuel back to where you found it
+  2. Complete the return checklist — <span class="v">{{dropoff_checklist_url}}</span>
+
+Keys go back in the lockbox, same code as pickup.
+
+Diana
+Cory Home Team</pre></div>
+    <div class="bd"><pre>Hi <span class="v">{{first_name}}</span>, Truck <span class="v">{{truck_code}}</span> is due back today. Return the gas at the
+level you got it, then finish the checklist: <span class="v">{{dropoff_checklist_url}}</span> — Diana</pre></div>
+  </div>
+
+  <div class="msg">
+    <div class="hd"><span class="chip grn">07</span><b>Thank you</b><span class="chip blu">Email + SMS</span><span class="when">on drop-off submit</span></div>
+    <div class="bd"><pre>Thanks <span class="v">{{first_name}}</span> — we've got Truck <span class="v">{{truck_code}}</span> back and your photos are in.
+Hope the move went smoothly. If you need the truck again, just book it.
+— Diana, Cory Home Team</pre></div>
+  </div>
+
+  <h4>And the ones nobody thinks about until they need them</h4>
+  <div class="scroll"><table>
+    <thead><tr><th>Trigger</th><th>Goes out</th><th>Says</th></tr></thead>
+    <tbody>
+      <tr><td>Contract unsigned</td><td class="mono">+24h, +48h</td><td>Gentle nudge with the link. After 72h the card flags for you.</td></tr>
+      <tr><td>Reply “RESCHEDULE”</td><td class="mono">instant</td><td>Auto-acknowledge, badge the card, release nothing until you decide.</td></tr>
+      <tr><td>No pickup checklist</td><td class="mono">pickup day 2 PM</td><td>“Did you get the truck OK?” — catches lockbox problems same-day.</td></tr>
+      <tr><td>Overdue</td><td class="mono">return day +1</td><td>Firm reminder. Clause 3 gives them three days before it counts as unauthorised taking, so the card escalates on day 3.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- =============================================== 8 CLOCK -->
+<section id="clock" class="doc">
+  <div class="eyebrow">08 &mdash; Timing</div>
+  <h2>One clock, set to Murrieta</h2>
+  <p>Vercel runs cron in UTC, and California moves twice a year. Chasing that with a fixed UTC hour means your 6 AM text arrives at 5 AM for half the year. So: <strong>a single job runs every hour</strong>, asks what time it is in <code>America/Los_Angeles</code>, and dispatches whatever is due.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Local hour</th><th>Job</th><th>Guard</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">06:00</td><td>Pickup morning message</td><td>Pickup date is today, stage is Confirmed, not already sent</td></tr>
+      <tr><td class="mono">07:00</td><td>Return-day message</td><td>Return date is today, stage is In Use</td></tr>
+      <tr><td class="mono">14:00</td><td>“Did you get the truck?”</td><td>Pickup was today, no pickup checklist yet</td></tr>
+      <tr><td class="mono">09:00</td><td>Contract nudges, overdue sweep, retention purge</td><td>Once daily</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="call warn">
+    <div class="t">This needs Vercel Pro</div>
+    <p>The Hobby plan allows two cron jobs and only daily granularity — an hourly tick is not possible on it. Either budget <strong>$20/month for Vercel Pro</strong>, or point a free external scheduler (cron-job.org, or a GHL recurring workflow) at a secured <code>/api/cron/tick</code> endpoint. Both work; Pro is tidier. Your call, and it is the only recurring cost in the build.</p>
+  </div>
+</section>
+
+<!-- =============================================== 9 STORAGE -->
+<section id="store" class="doc">
+  <div class="eyebrow">09 &mdash; Storage</div>
+  <h2>WebP in, oldest out</h2>
+  <p>Exactly as you asked, with guardrails so the cleanup can never delete something you still need.</p>
+  <ul class="tick">
+    <li><strong>Converted twice.</strong> The browser downscales to 1600px and encodes WebP at quality 82 before upload — a 4 MB phone photo lands around 180 KB. The server re-encodes anything that slipped through, so a licence photo can never arrive as a 12 MB HEIC.</li>
+    <li><strong>Private by default.</strong> Blobs are not publicly listable; the CRM serves them through short-lived signed URLs. Driver’s licences should not be sitting on a guessable URL.</li>
+    <li><strong>The 80% rule.</strong> A nightly job totals blob usage against your configured quota. Over 80%, it deletes the oldest <em>eligible</em> photos until back under 70% — deleting to exactly 80% means it runs again tomorrow.</li>
+  </ul>
+
+  <h4>What “eligible” means</h4>
+  <div class="scroll"><table>
+    <thead><tr><th>Asset</th><th>Kept until</th><th>Reason</th></tr></thead>
+    <tbody>
+      <tr><td>Signed contract PDFs</td><td class="mono">Never purged</td><td>Your legal record. A few hundred KB each — they will never be the problem.</td></tr>
+      <tr><td>Licence &amp; insurance</td><td class="mono">Completed + 30 days</td><td>Sensitive ID documents. Holding them longer is a liability, not an asset.</td></tr>
+      <tr><td>Checklist photos</td><td class="mono">Completed + 90 days</td><td>Long enough for a damage claim to surface.</td></tr>
+      <tr><td>Anything on an open booking</td><td class="mono">Untouchable</td><td>Not Completed, flagged Overdue, or marked Needs review — the purge skips it entirely.</td></tr>
+    </tbody>
+  </table></div>
+  <p style="font-size:15px;color:var(--mut)">Every deletion is logged, and the CRM shows a storage gauge so “we are at 80%” is never a surprise.</p>
+</section>
+
+<!-- =============================================== 10 GHL -->
+<section id="ghl" class="doc">
+  <div class="eyebrow">10 &mdash; GoHighLevel</div>
+  <h2>Upsert, then talk</h2>
+  <p>You were right that most of these people are already in GHL. Every message follows the same two steps: upsert the contact on email + phone so we never create a duplicate, then send into the thread that already exists.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Step</th><th>Endpoint</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Upsert contact</td><td class="mono">POST /contacts/upsert</td><td>Matches on email or phone. Returns the contact id we store on the booking.</td></tr>
+      <tr><td>Stamp custom fields</td><td class="mono">on the same call</td><td>Truck, pickup date, stage, reference — so your existing GHL workflows can see rental state too.</td></tr>
+      <tr><td>Send email / SMS</td><td class="mono">POST /conversations/messages</td><td>Lands in the contact’s normal conversation thread.</td></tr>
+      <tr><td>Mirror as opportunity</td><td class="mono">POST /opportunities</td><td>Optional. Gives you the same board inside GHL if you want it there.</td></tr>
+      <tr><td>Inbound replies</td><td class="mono">webhook &rarr; our API</td><td>Catches “RESCHEDULE” and badges the card automatically.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="call note">
+    <div class="t">Two things to check on the GHL side</div>
+    <p>The private-integration token needs scopes for <code>contacts.write</code>, <code>conversations.write</code>, <code>conversations/message.write</code> and <code>locations/customFields.write</code>. And the location must already have a phone number and email service connected — the API sends <em>through</em> your existing setup, it does not provide one.</p>
+    <p style="margin-bottom:0">If sending direct proves fiddly, the fallback is to fire an inbound webhook into a GHL workflow and let the workflow send using your own templates. Same result, more clicking. I would try direct first.</p>
+  </div>
+</section>
+
+<!-- =============================================== 11 IMPROVEMENTS -->
+<section id="better" class="doc">
+  <div class="eyebrow">11 &mdash; Upgrades</div>
+  <h2>Where I would push back on the plan</h2>
+  <p>Your outline is sound. These are the gaps I would close, ordered by what they save you.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Change</th><th>Why it matters</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td>Exterior photos, both checklists</td><td>You carry a $2,500 deductible. Cargo-space-only photos cannot prove a dent was already there.</td><td class="mono">1 screen</td></tr>
+      <tr><td>Fuel gauge at pickup too</td><td>Makes “return it as you received it” actually enforceable.</td><td class="mono">1 field</td></tr>
+      <tr><td>Rotating per-truck lockbox codes</td><td><span class="mono">92584</span> is hard-coded in your current form. Every past renter still knows it. Store the code per truck, reveal it only in the 6 AM text, rotate on a schedule.</td><td class="mono">small</td></tr>
+      <tr><td>Capture the second driver directly</td><td>Ask for their email and mobile on the main contract, then send their link straight to them. Removes the “did you forward it?” chase entirely.</td><td class="mono">3 fields</td></tr>
+      <tr><td>Signature audit trail</td><td>IP, user-agent, timestamp and a hash of the exact wording shown. This is what makes a click-signature stand up.</td><td class="mono">built in</td></tr>
+      <tr><td>Idempotent messaging</td><td>A retried cron must never double-text at 6 AM. One log row per booking-per-template, checked before send.</td><td class="mono">built in</td></tr>
+      <tr><td>Booking-race lock</td><td>Two people, last truck, same second. Without a row lock you double-book and find out on pickup morning.</td><td class="mono">built in</td></tr>
+      <tr><td>Keep the booking form short</td><td>Name, email, phone and two photos only. Employer, addresses, DOB and policy number belong on the contract page where people expect them — asking for all of it up front will cost you bookings.</td><td class="mono">free</td></tr>
+      <tr><td>Automatic RESCHEDULE handling</td><td>Your confirmation already invites the reply. Wire it up rather than hoping someone reads the inbox.</td><td class="mono">1 webhook</td></tr>
+      <tr><td>Overdue escalation</td><td>Clause 3 gives a three-day grace before it becomes unauthorised taking. Track that clock rather than noticing by accident.</td><td class="mono">1 cron rule</td></tr>
+      <tr><td>Blackout dates</td><td>Service, repairs, a truck you need yourself. Without it you will be manually declining bookings.</td><td class="mono">small</td></tr>
+      <tr><td>Scroll-to-sign</td><td>Disable the signature until they reach the end of the terms. Cheap, and it closes the “I never saw that clause” argument.</td><td class="mono">free</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="call note">
+    <div class="t">One thing I noticed in the contracts</div>
+    <p>The Rental Agreement terms say they are governed by <strong>Texas</strong> law (clause 13a) while the Waiver &amp; Release attached behind it specifies <strong>California</strong> law with venue in Riverside County. Both are in the same signed packet. That is almost certainly leftover boilerplate from the On The Move template, but it is worth ten minutes with your attorney before we set the wording in stone — once it is versioned in the system, changing it means re-issuing.</p>
+  </div>
+</section>
+
+<!-- =============================================== 12 BUILD -->
+<section id="build" class="doc">
+  <div class="eyebrow">12 &mdash; Sequence</div>
+  <h2>What ships, in what order</h2>
+  <p>Each phase is independently useful — you could stop after any one of them and still be better off than today.</p>
+
+  <div class="phases">
+    <div class="ph"><div class="k"><b>Phase 1</b><span>FOUNDATION</span></div><div class="v">
+      <p>Next.js app on Vercel, Prisma schema pushed to Postgres, both trucks seeded, admin login, empty stage board.</p>
+      <ul><li>Repo live at <span class="mono">cht-truck-booking</span>, auto-deploying</li><li>Environment variables set, rotated secrets in place</li></ul>
+    </div></div>
+    <div class="ph"><div class="k"><b>Phase 2</b><span>BOOKING</span></div><div class="v">
+      <p>Availability API, booking API with the race lock, Blob uploads, and the GHL widget going live on your funnel page.</p>
+      <ul><li><strong>The widget is already written and tested</strong> — it only needs the API behind it</li><li>Cards start appearing on the board</li></ul>
+    </div></div>
+    <div class="ph"><div class="k"><b>Phase 3</b><span>CONTRACTS</span></div><div class="v">
+      <p>The signing page, both agreement types, signature capture, PDF generation, and the additional-driver branch.</p>
+      <ul><li>Stages 1 through 4 fully automatic</li><li>You stop sending PDFs by hand</li></ul>
+    </div></div>
+    <div class="ph"><div class="k"><b>Phase 4</b><span>MESSAGING</span></div><div class="v">
+      <p>GHL upsert, all seven message templates, the hourly clock, and the 6 AM pickup text.</p>
+      <ul><li>Every stage change now notifies the renter without you</li></ul>
+    </div></div>
+    <div class="ph"><div class="k"><b>Phase 5</b><span>CHECKLISTS</span></div><div class="v">
+      <p>Pickup and drop-off flows, photo capture, auto-advance to Returned, thank-you message.</p>
+      <ul><li>The loop closes — a rental can run start to finish untouched</li></ul>
+    </div></div>
+    <div class="ph"><div class="k"><b>Phase 6</b><span>POLISH</span></div><div class="v">
+      <p>Booking detail modal, message log, blackout dates, storage gauge, retention purge, RESCHEDULE webhook, overdue sweep.</p>
+      <ul><li>The parts you will miss on week three</li></ul>
+    </div></div>
+  </div>
+</section>
+
+<!-- =============================================== 13 SETUP -->
+<section id="setup" class="doc">
+  <div class="eyebrow">13 &mdash; Setup</div>
+  <h2>What I need from you</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Variable</th><th>Where it comes from</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">DATABASE_URL</td><td>Prisma console — <strong>new</strong> password, not the one you pasted</td></tr>
+      <tr><td class="mono">GHL_API_TOKEN</td><td>GHL private integration — <strong>regenerated</strong></td></tr>
+      <tr><td class="mono">GHL_LOCATION_ID</td><td>Already have it; not a secret</td></tr>
+      <tr><td class="mono">BLOB_READ_WRITE_TOKEN</td><td>Created automatically when we add Vercel Blob</td></tr>
+      <tr><td class="mono">BLOB_QUOTA_BYTES</td><td>Your plan’s storage limit, so the 80% rule knows what 80% means</td></tr>
+      <tr><td class="mono">CRON_SECRET</td><td>We generate it — stops anyone from triggering your 6 AM texts</td></tr>
+      <tr><td class="mono">SESSION_SECRET</td><td>We generate it — CRM login</td></tr>
+      <tr><td class="mono">ALLOWED_ORIGINS</td><td>Your GHL funnel domain, for the widget’s CORS</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>And three things only you can supply</h4>
+  <ul class="tick">
+    <li><strong>Diana’s signature</strong> as a transparent PNG, for the counter-signature block.</li>
+    <li><strong>The Cory Home Team logo</strong> as SVG or high-res PNG — I have only the low-resolution version embedded in the PDFs.</li>
+    <li><strong>Current lockbox codes</strong> for both trucks, and whether A and B share one.</li>
+  </ul>
+</section>
+
+<!-- =============================================== 14 RISKS -->
+<section id="risk" class="doc">
+  <div class="eyebrow">14 &mdash; Watch items</div>
+  <h2>What could bite</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Risk</th><th>Handling</th></tr></thead>
+    <tbody>
+      <tr><td>Exposed credentials</td><td>Rotate both before Phase 1. Non-negotiable.</td></tr>
+      <tr><td>Vercel cron limits</td><td>Hobby cannot do hourly. Pro at $20/mo, or an external scheduler hitting a secured endpoint.</td></tr>
+      <tr><td>GHL sending scopes</td><td>Verify the token’s permissions and that the location has phone + email connected, before Phase 4 — not during it.</td></tr>
+      <tr><td>Widget CSS collisions</td><td>Already solved: the widget renders in a shadow root, so no GHL theme can reach inside it.</td></tr>
+      <tr><td>iPhone HEIC uploads</td><td>Browser converts where it can; the server re-encodes with sharp where it cannot. Never rejects the customer’s photo.</td></tr>
+      <tr><td>Governing-law conflict</td><td>Texas vs California in the same packet. Attorney review before we version the wording.</td></tr>
+      <tr><td>Someone books, never signs</td><td>Truck stays soft-held. Nudges at 24h and 48h, auto-release at 72h so the date is not dead.</td></tr>
+      <tr><td>Purge deleting live evidence</td><td>Eligibility rules above; open, overdue and flagged bookings are untouchable.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<div class="foot doc">
+  Cory Home Team &mdash; truck operations build plan &middot; drafted 30 August 2026 &middot; the GHL booking widget is written, tested and ready to paste
+</div>
+
+</div>

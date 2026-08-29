@@ -1,0 +1,582 @@
+/* Cory Home Team — shared shell for the public signing and checklist pages
+   and the internal CRM. One palette, matching the booking widget. */
+
+:root {
+  --red: #d6001c;
+  --red-d: #a80016;
+  --red-wash: #fff3f4;
+  --red-line: #fbd5d9;
+
+  --ink: #17181a;
+  --ink-2: #3d4046;
+  --mut: #6b6e73;
+  --faint: #93969b;
+
+  --paper: #f3f4f6;
+  --surface: #ffffff;
+  --sunk: #f7f8f9;
+  --line: #e4e5e7;
+  --line-2: #d2d4d7;
+
+  --ok: #0f7b4f;
+  --ok-wash: #eef7f2;
+  --warn: #8f5e0a;
+  --warn-wash: #fbf4e7;
+  --info: #1f5b99;
+  --info-wash: #eff4fa;
+
+  --r: 12px;
+  --shadow: 0 1px 3px rgba(16, 18, 22, 0.07), 0 12px 32px rgba(16, 18, 22, 0.07);
+  --font: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+}
+
+a {
+  color: var(--red);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+/* ---------------------------------------------------------------- shell */
+
+.shell {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.card-hd {
+  padding: 20px 24px 16px;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.logo {
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  font-size: 14px;
+}
+.logo em {
+  font-style: normal;
+  color: var(--red);
+}
+
+.card-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--mut);
+}
+
+.card-bd {
+  padding: 22px 24px 26px;
+}
+
+.card-ft {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 15px 24px;
+  border-top: 1px solid var(--line);
+  background: #fcfcfd;
+}
+.card-ft .spacer {
+  flex: 1;
+}
+
+/* progress dots */
+.dots {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  margin-top: 14px;
+}
+.dots i {
+  width: 22px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--line);
+  transition: background 0.3s;
+}
+.dots i.on {
+  background: var(--red);
+}
+
+/* ---------------------------------------------------------------- type */
+
+h1 {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  margin: 0 0 6px;
+  text-wrap: balance;
+}
+h2 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 22px 0 8px;
+}
+p {
+  margin: 0 0 13px;
+}
+.lede {
+  color: var(--mut);
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+.tiny {
+  font-size: 12px;
+  color: var(--mut);
+}
+
+.center {
+  text-align: center;
+}
+.red {
+  color: var(--red);
+}
+
+/* ---------------------------------------------------------------- forms */
+
+.row {
+  margin-bottom: 15px;
+}
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.three {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 520px) {
+  .two,
+  .three {
+    grid-template-columns: 1fr;
+  }
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+label em {
+  font-style: normal;
+  color: var(--red);
+}
+
+input[type='text'],
+input[type='email'],
+input[type='tel'],
+input[type='password'],
+input[type='date'],
+input[type='time'],
+select,
+textarea {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 15px;
+  background: #fff;
+}
+textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(214, 0, 28, 0.12);
+}
+input[aria-invalid='true'] {
+  border-color: var(--red);
+  background: var(--red-wash);
+}
+
+.err {
+  color: var(--red);
+  font-size: 12.5px;
+  margin-top: 5px;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  font-weight: 700;
+  font-size: 14.5px;
+  border-radius: 10px;
+  padding: 11px 20px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: 0.15s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn.primary {
+  background: var(--red);
+  color: #fff;
+}
+.btn.primary:hover:not(:disabled) {
+  background: var(--red-d);
+}
+.btn.primary:disabled {
+  background: #e7a5ae;
+  cursor: not-allowed;
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--mut);
+  border-color: var(--line);
+}
+.btn.ghost:hover {
+  color: var(--ink);
+  border-color: var(--line-2);
+}
+.btn.small {
+  padding: 7px 13px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* ---------------------------------------------------------------- notes */
+
+.note {
+  border-radius: 10px;
+  padding: 12px 15px;
+  font-size: 13.5px;
+  margin: 14px 0;
+  border: 1px solid var(--line);
+}
+.note.alert {
+  background: var(--red-wash);
+  border-color: var(--red-line);
+  color: var(--red-d);
+}
+.note.ok {
+  background: var(--ok-wash);
+  border-color: #cfe9dd;
+  color: var(--ok);
+}
+.note.warn {
+  background: var(--warn-wash);
+  border-color: #eddcb8;
+  color: var(--warn);
+}
+.note.info {
+  background: var(--info-wash);
+  border-color: #cfe0f2;
+  color: var(--info);
+}
+.note b {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* the red "do not close this page" block from the original forms */
+.reminder {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 18px;
+}
+
+/* ---------------------------------------------------------------- uploads */
+
+.drop {
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  padding: 22px 16px;
+  text-align: center;
+  cursor: pointer;
+  background: #fafafb;
+  transition: 0.18s;
+  width: 100%;
+  display: block;
+}
+.drop:hover,
+.drop.over {
+  border-color: var(--red);
+  background: var(--red-wash);
+}
+.drop b {
+  display: block;
+  font-size: 14px;
+}
+.drop small {
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.thumb {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: #fff;
+}
+.thumb img {
+  width: 54px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 7px;
+  background: var(--sunk);
+  flex: none;
+}
+.thumb .meta {
+  flex: 1;
+  min-width: 0;
+}
+.thumb .meta b {
+  display: block;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.thumb .meta small {
+  color: var(--mut);
+  font-size: 12px;
+}
+.thumb button {
+  border: 0;
+  background: none;
+  color: var(--mut);
+  cursor: pointer;
+  font-size: 19px;
+  line-height: 1;
+  padding: 4px;
+}
+.thumb button:hover {
+  color: var(--red);
+}
+
+.bar {
+  height: 3px;
+  border-radius: 99px;
+  background: var(--line);
+  overflow: hidden;
+  margin-top: 5px;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  background: var(--red);
+  width: 0;
+  transition: width 0.25s;
+}
+
+/* ---------------------------------------------------------------- terms */
+
+.terms {
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: var(--sunk);
+  font-size: 13px;
+  line-height: 1.55;
+  overscroll-behavior: contain;
+}
+.terms h4 {
+  font-size: 14px;
+  margin: 18px 0 6px;
+}
+.terms h4:first-child {
+  margin-top: 0;
+}
+.terms p {
+  margin: 0 0 9px;
+}
+.terms .sub {
+  padding-left: 16px;
+  color: var(--ink-2);
+}
+.terms .shout {
+  font-weight: 700;
+}
+.scrollnote {
+  font-size: 12.5px;
+  color: var(--mut);
+  margin-top: 8px;
+}
+.scrollnote.done {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- signature */
+
+.sigwrap {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+.sigtabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  background: var(--sunk);
+}
+.sigtabs button {
+  flex: 1;
+  padding: 10px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mut);
+}
+.sigtabs button[aria-selected='true'] {
+  background: #fff;
+  color: var(--red);
+  box-shadow: inset 0 -2px 0 var(--red);
+}
+.sigpad {
+  display: block;
+  width: 100%;
+  height: 150px;
+  touch-action: none;
+  cursor: crosshair;
+  background: repeating-linear-gradient(0deg, transparent 0 148px, var(--line) 148px 149px);
+}
+.sigtype {
+  padding: 18px;
+}
+.sigtype input {
+  font-family: 'Segoe Script', 'Brush Script MT', cursive;
+  font-size: 26px;
+  text-align: center;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.sigtype input:focus {
+  box-shadow: none;
+  border-bottom-color: var(--red);
+}
+.sigclear {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--sunk);
+}
+
+/* ---------------------------------------------------------------- misc */
+
+.recap {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 18px;
+}
+.recap div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 15px;
+  font-size: 13.5px;
+  border-bottom: 1px solid var(--line);
+}
+.recap div:last-child {
+  border-bottom: 0;
+}
+.recap span {
+  color: var(--mut);
+}
+.recap b {
+  text-align: right;
+}
+
+.tick {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--ok-wash);
+  color: var(--ok);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  font-size: 29px;
+}
+
+.pagefoot {
+  text-align: center;
+  font-size: 12px;
+  color: var(--faint);
+  padding: 18px 0 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

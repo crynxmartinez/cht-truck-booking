@@ -1,0 +1,43 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# Vercel
+.vercel
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local working files
+/scratch/
+*.local
+
+# Source material — not code, and the PDFs contain a real signature graphic.
+# Kept locally; do not publish to a public repo.
+sample pdf/

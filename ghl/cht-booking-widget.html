@@ -1,0 +1,628 @@
+<!-- ==========================================================
+     CORY HOME TEAM - 3-Day Truck Booking Widget
+     Paste this whole block into a GHL "Custom Code / HTML" element.
+     Scripts do NOT run inside the GHL editor preview - always test
+     on the published or preview URL.
+     The only thing you must edit is the data-api attribute below.
+     ========================================================== -->
+
+<div id="cht-truck-booking" data-api="https://cht-truck-booking.vercel.app"></div>
+
+<script>
+(function () {
+  var host = document.getElementById('cht-truck-booking');
+  if (!host || host.shadowRoot) return;              // guard against double-paste
+
+  var CFG = {
+    apiBase:        host.getAttribute('data-api') || '',
+    rentalDays:     3,                       // truck is blocked this many days from pickup
+    minLeadDays:    1,                       // earliest bookable day = today + this
+    maxMonthsAhead: 3,                       // how far forward the calendar scrolls
+    timeZone:       'America/Los_Angeles',
+    pickupAddress:  '25220 Hancock Ave, Murrieta, CA 92562',
+    maxFileMB:      15
+  };
+
+  var root = host.attachShadow({ mode: 'open' });
+
+  /* ---------------------------------------------------------- styles */
+  var CSS = [
+':host{all:initial;display:block;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
+'*,*::before,*::after{box-sizing:border-box}',
+'.wrap{--red:#D6001C;--red-d:#A80016;--ink:#111827;--mut:#6B7280;--line:#E5E7EB;--ok:#059669;',
+'max-width:640px;margin:0 auto;padding:16px;color:var(--ink);line-height:1.5;font-size:15px}',
+'.card{background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08),0 12px 32px rgba(0,0,0,.08);overflow:hidden;position:relative}',
+
+'.hd{padding:22px 24px 16px;text-align:center;border-bottom:1px solid var(--line)}',
+'.logo{font-weight:800;letter-spacing:.16em;font-size:15px}',
+'.logo em{font-style:normal;color:var(--red)}',
+'.sub{margin-top:4px;font-size:13px;color:var(--mut)}',
+'.steps{display:flex;gap:6px;justify-content:center;margin-top:14px}',
+'.steps i{width:26px;height:4px;border-radius:99px;background:var(--line);transition:background .3s}',
+'.steps i.on{background:var(--red)}',
+
+'.stage{position:relative;min-height:390px}',
+'section[data-screen]{display:none;padding:22px 24px 26px;animation:fade .35s ease both}',
+'section[data-screen].live{display:block}',
+'@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
+'h2{margin:0 0 4px;font-size:19px;font-weight:700}',
+'.lede{margin:0 0 18px;font-size:14px;color:var(--mut)}',
+
+'.calbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}',
+'.calbar b{font-size:16px}',
+'.nav{display:flex;gap:6px}',
+'.nav button{width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:9px;cursor:pointer;font-size:16px;line-height:1;color:var(--ink)}',
+'.nav button:hover:not(:disabled){border-color:var(--red);color:var(--red)}',
+'.nav button:disabled{opacity:.35;cursor:not-allowed}',
+'.dow{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}',
+'.dow span{text-align:center;font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.06em}',
+'.grid,.skel{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}',
+'.skel div{height:44px;border-radius:10px;background:linear-gradient(90deg,#F1F2F4,#E7E9EC,#F1F2F4);background-size:200% 100%;animation:sh 1.2s infinite}',
+'@keyframes sh{to{background-position:-200% 0}}',
+'.day{position:relative;height:44px;border:1px solid transparent;background:transparent;border-radius:10px;font:inherit;font-size:14px;cursor:pointer;color:var(--ink);display:flex;align-items:center;justify-content:center}',
+'.day.pad{visibility:hidden}',
+'.day.free{background:#fff;border-color:var(--line)}',
+'.day.free:hover{border-color:var(--red);color:var(--red)}',
+'.day.full{color:#C4C7CE;text-decoration:line-through;cursor:not-allowed}',
+'.day.sel{background:var(--red);border-color:var(--red);color:#fff;font-weight:700}',
+'.day.free::after{content:"";position:absolute;bottom:5px;width:4px;height:4px;border-radius:50%;background:var(--ok)}',
+'.day.sel::after{background:#fff}',
+'.day:focus-visible{outline:2px solid var(--red);outline-offset:2px}',
+'.legend{display:flex;gap:16px;margin-top:14px;font-size:12px;color:var(--mut)}',
+'.legend i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}',
+'.pick{margin-top:16px;padding:13px 15px;border-radius:11px;background:#FFF3F4;border:1px solid #FBD5D9;font-size:14px;display:none}',
+'.pick.live{display:block}',
+'.pick b{color:var(--red)}',
+'.pick em{display:block;font-style:normal;color:var(--mut);font-size:12.5px;margin-top:3px}',
+
+'.row{margin-bottom:15px}',
+'.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}',
+'@media(max-width:480px){.two{grid-template-columns:1fr}}',
+'label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}',
+'label em{font-style:normal;color:var(--red)}',
+'input[type=text],input[type=email],input[type=tel]{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:15px;color:var(--ink);background:#fff}',
+'input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px rgba(214,0,28,.12)}',
+'input[aria-invalid=true]{border-color:var(--red);background:#FFF7F8}',
+'.err{display:none;color:var(--red);font-size:12.5px;margin-top:5px}',
+'.err.live{display:block}',
+'.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}',
+
+'.drop{border:2px dashed var(--line);border-radius:12px;padding:22px 16px;text-align:center;cursor:pointer;background:#FAFAFB;transition:.18s}',
+'.drop:hover,.drop.over{border-color:var(--red);background:#FFF7F8}',
+'.drop b{display:block;font-size:14px}',
+'.drop small{color:var(--mut);font-size:12px}',
+'.thumb{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}',
+'.thumb img{width:56px;height:44px;object-fit:cover;border-radius:7px;background:#F3F4F6;flex:none}',
+'.thumb .meta{flex:1;min-width:0}',
+'.thumb .meta b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+'.thumb .meta small{color:var(--mut);font-size:12px}',
+'.thumb button{border:0;background:none;color:var(--mut);cursor:pointer;font-size:19px;line-height:1;padding:4px}',
+'.thumb button:hover{color:var(--red)}',
+'.bar{height:3px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:6px}',
+'.bar i{display:block;height:100%;background:var(--red);width:0;transition:width .25s}',
+
+'.ft{display:flex;gap:10px;align-items:center;padding:16px 24px;border-top:1px solid var(--line);background:#FCFCFD}',
+'.ft .spacer{flex:1}',
+'.btn{font:inherit;font-weight:700;font-size:14.5px;border-radius:10px;padding:12px 22px;cursor:pointer;border:1px solid transparent;transition:.15s}',
+'.primary{background:var(--red);color:#fff}',
+'.primary:hover:not(:disabled){background:var(--red-d)}',
+'.primary:disabled{background:#E7A5AE;cursor:not-allowed}',
+'.ghost{background:transparent;color:var(--mut);border-color:var(--line)}',
+'.ghost:hover{color:var(--ink);border-color:#CFD3DA}',
+'.note{font-size:12px;color:var(--mut);margin-top:14px}',
+'.alert{background:#FFF3F4;border:1px solid #FBD5D9;color:var(--red-d);padding:11px 14px;border-radius:10px;font-size:13.5px;margin-bottom:16px;display:none}',
+'.alert.live{display:block}',
+
+'.done{text-align:center;padding:34px 24px 40px}',
+'.done .tick{width:62px;height:62px;border-radius:50%;background:#ECFDF5;color:var(--ok);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:30px}',
+'.done h2{font-size:22px}',
+'.recap{text-align:left;margin:20px auto 0;max-width:400px;border:1px solid var(--line);border-radius:12px;overflow:hidden}',
+'.recap div{display:flex;justify-content:space-between;gap:16px;padding:11px 15px;font-size:13.5px;border-bottom:1px solid var(--line)}',
+'.recap div:last-child{border-bottom:0}',
+'.recap span{color:var(--mut)}',
+'.recap b{text-align:right}',
+
+'.curtain{position:absolute;inset:0;background:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:9}',
+'.curtain.live{display:flex}',
+'.road{position:relative;width:100%;height:130px;overflow:hidden}',
+'.truck{position:absolute;top:10px;left:0;width:190px;animation:drive 1.15s cubic-bezier(.42,0,.58,1) forwards}',
+'@keyframes drive{from{transform:translateX(-220px)}to{transform:translateX(680px)}}',
+'.hop{animation:hop .3s ease-in-out infinite}',
+'@keyframes hop{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.6px)}}',
+'.wh{transform-box:fill-box;transform-origin:center;animation:spin .42s linear infinite}',
+'@keyframes spin{to{transform:rotate(360deg)}}',
+'.tarmac{position:absolute;left:0;right:0;bottom:30px;height:2px;background:repeating-linear-gradient(90deg,#D8DBE0 0 22px,transparent 22px 44px);animation:pan .42s linear infinite}',
+'@keyframes pan{to{background-position:-44px 0}}',
+'.puff{opacity:0;animation:puff .9s ease-out infinite}',
+'@keyframes puff{0%{opacity:.45;transform:translate(0,0) scale(.5)}100%{opacity:0;transform:translate(-26px,-10px) scale(1.6)}}',
+'.curtain p{margin:0;font-size:14px;font-weight:600;color:var(--mut)}',
+'@media(prefers-reduced-motion:reduce){.truck,.wh,.tarmac,.puff,.hop{animation-duration:.01ms!important;animation-iteration-count:1!important}section[data-screen]{animation:none}}'
+  ].join('\n');
+
+  /* ------------------------------------------------------ truck SVG */
+  var TRUCK = [
+'<svg class="truck" viewBox="0 0 200 84" aria-hidden="true">',
+'<g class="hop">',
+'<circle class="puff" cx="14" cy="58" r="5" fill="#C9CDD4"/>',
+'<rect x="6" y="14" width="106" height="46" rx="5" fill="#D6001C"/>',
+'<rect x="6" y="14" width="106" height="46" rx="5" fill="none" stroke="#A80016" stroke-width="2"/>',
+'<rect x="16" y="24" width="86" height="20" rx="2" fill="#fff" opacity=".92"/>',
+'<text x="59" y="39" text-anchor="middle" font-family="Helvetica,Arial" font-size="13" font-weight="700" fill="#D6001C">CHT</text>',
+'<path d="M112 26h27l19 18v16h-46z" fill="#D6001C"/>',
+'<path d="M112 26h27l19 18v16h-46z" fill="none" stroke="#A80016" stroke-width="2"/>',
+'<path d="M118 31h18l13 13h-31z" fill="#DCE6F2"/>',
+'<rect x="6" y="58" width="152" height="5" rx="2" fill="#8F0012"/>',
+'<circle class="wh" cx="40" cy="66" r="11" fill="#22262E"/><circle cx="40" cy="66" r="4.2" fill="#B9BEC6"/>',
+'<circle class="wh" cx="132" cy="66" r="11" fill="#22262E"/><circle cx="132" cy="66" r="4.2" fill="#B9BEC6"/>',
+'</g></svg>'
+  ].join('');
+
+  /* --------------------------------------------------------- markup */
+  var HTML = [
+'<div class="wrap"><div class="card">',
+'<div class="hd">',
+'<div class="logo">C<em>&#8962;</em>RY HOME TEAM</div>',
+'<div class="sub">3-Day Truck Rental</div>',
+'<div class="steps"><i data-dot="0"></i><i data-dot="1"></i><i data-dot="2"></i></div>',
+'</div>',
+
+'<div class="stage">',
+
+/* ---- 1. calendar */
+'<section data-screen="cal">',
+'<h2>Pick your pickup date</h2>',
+'<p class="lede">Your rental runs ' + CFG.rentalDays + ' days from the date you choose.</p>',
+'<div class="alert" data-el="calAlert"></div>',
+'<div class="calbar"><b data-el="monthLabel">&nbsp;</b>',
+'<div class="nav"><button type="button" data-el="prev" aria-label="Previous month">&#8249;</button>',
+'<button type="button" data-el="next" aria-label="Next month">&#8250;</button></div></div>',
+'<div class="dow"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>',
+'<div data-el="calBody"></div>',
+'<div class="legend"><span><i style="background:#059669"></i>Available</span><span><i style="background:#C4C7CE"></i>Fully booked</span></div>',
+'<div class="pick" data-el="pick"></div>',
+'</section>',
+
+/* ---- 2. details */
+'<section data-screen="details">',
+'<h2>Who is renting?</h2>',
+'<p class="lede">We will send your rental agreement and pickup instructions here.</p>',
+'<div class="alert" data-el="detAlert"></div>',
+'<div class="row two">',
+'<div><label for="fn">First name <em>*</em></label><input id="fn" type="text" name="firstName" autocomplete="given-name"><div class="err" data-err="firstName"></div></div>',
+'<div><label for="ln">Last name <em>*</em></label><input id="ln" type="text" name="lastName" autocomplete="family-name"><div class="err" data-err="lastName"></div></div>',
+'</div>',
+'<div class="row"><label for="em">Email <em>*</em></label><input id="em" type="email" name="email" autocomplete="email" inputmode="email"><div class="err" data-err="email"></div></div>',
+'<div class="row"><label for="ph">Mobile phone <em>*</em></label><input id="ph" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="(951) 555-0147"><div class="err" data-err="phone"></div></div>',
+'<input class="hp" type="text" name="company_website" tabindex="-1" aria-hidden="true" autocomplete="off">',
+'<p class="note">We text a lockbox code at 6:00 AM on your pickup day, so please use a mobile number.</p>',
+'</section>',
+
+/* ---- 3. documents */
+'<section data-screen="docs">',
+'<h2>Two quick photos</h2>',
+'<p class="lede">Required before we can release a truck. A clear phone photo is fine.</p>',
+'<div class="alert" data-el="docAlert"></div>',
+'<div class="row"><label>Driver&#39;s license <em>*</em></label><div data-slot="license"></div><div class="err" data-err="license"></div></div>',
+'<div class="row"><label>Proof of insurance <em>*</em></label><div data-slot="insurance"></div><div class="err" data-err="insurance"></div></div>',
+'<p class="note">Images are converted to WebP and stored privately. They are used only to verify your rental.</p>',
+'</section>',
+
+/* ---- 4. done */
+'<section data-screen="done"><div class="done">',
+'<div class="tick">&#10003;</div>',
+'<h2>Booking request received</h2>',
+'<p class="lede" data-el="doneMsg"></p>',
+'<div class="recap" data-el="recap"></div>',
+'</div></section>',
+
+'<div class="curtain" data-el="curtain"><div class="road">' + TRUCK + '<div class="tarmac"></div></div><p data-el="curtainMsg">Loading</p></div>',
+'</div>',
+
+'<div class="ft" data-el="footer">',
+'<button type="button" class="btn ghost" data-el="back">Back</button>',
+'<div class="spacer"></div>',
+'<button type="button" class="btn primary" data-el="go" disabled>Continue</button>',
+'</div>',
+
+'</div></div>'
+  ].join('');
+
+  root.innerHTML = '<style>' + CSS + '</style>' + HTML;
+
+  /* -------------------------------------------------------- helpers */
+  var $  = function (s) { return root.querySelector(s); };
+  var el = function (n) { return root.querySelector('[data-el="' + n + '"]'); };
+
+  var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  /** Today's date in the pickup location's timezone, as YYYY-MM-DD. */
+  function todayLocal() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: CFG.timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  }
+  function ymd(y, m, d) {
+    return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  }
+  function addDays(iso, n) {
+    var p = iso.split('-');
+    var dt = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    dt.setUTCDate(dt.getUTCDate() + n);
+    return dt.toISOString().slice(0, 10);
+  }
+  function pretty(iso) {
+    var p = iso.split('-');
+    var dt = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(dt);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function digits(s) { return String(s || '').replace(/\D/g, ''); }
+  function e164(s) {
+    var d = digits(s);
+    if (d.length === 10) return '+1' + d;
+    if (d.length === 11 && d[0] === '1') return '+' + d;
+    return d ? '+' + d : '';
+  }
+
+  /* --------------------------------------------------------- state */
+  var S = {
+    step: 0,                                    // 0 cal, 1 details, 2 docs, 3 done
+    date: null,
+    avail: {},                                  // iso -> trucksFree
+    loadedMonths: {},
+    view: null,                                 // {y, m} currently shown month
+    draftId: null,
+    files: { license: null, insurance: null },  // {id, url, name, size, thumb}
+    busy: false
+  };
+
+  var TODAY    = todayLocal();
+  var EARLIEST = addDays(TODAY, CFG.minLeadDays);
+  var LATEST   = (function () {
+    var p = TODAY.split('-');
+    var dt = new Date(Date.UTC(+p[0], +p[1] - 1 + CFG.maxMonthsAhead + 1, 0));
+    return dt.toISOString().slice(0, 10);
+  })();
+
+  /* ----------------------------------------------------- transitions */
+  function drive(msg) {
+    return new Promise(function (res) {
+      var c = el('curtain');
+      el('curtainMsg').textContent = msg || '';
+      // restart the CSS animation
+      var t = c.querySelector('.truck');
+      t.style.animation = 'none';
+      void t.offsetWidth;
+      t.style.animation = '';
+      c.classList.add('live');
+      setTimeout(function () { c.classList.remove('live'); res(); }, 1150);
+    });
+  }
+
+  var SCREENS = ['cal', 'details', 'docs', 'done'];
+
+  function show(step) {
+    S.step = step;
+    SCREENS.forEach(function (name, i) {
+      root.querySelector('section[data-screen="' + name + '"]').classList.toggle('live', i === step);
+    });
+    root.querySelectorAll('[data-dot]').forEach(function (d, i) { d.classList.toggle('on', i <= step && step < 3); });
+    el('footer').style.display = step === 3 ? 'none' : '';
+    el('back').style.visibility = step === 0 ? 'hidden' : 'visible';
+    el('go').textContent = step === 2 ? 'Submit booking' : 'Continue';
+    syncGo();
+  }
+
+  function syncGo() {
+    var ok = false;
+    if (S.step === 0) ok = !!S.date;
+    if (S.step === 1) ok = ['firstName', 'lastName', 'email', 'phone'].every(function (n) { return $('[name=' + n + ']').value.trim(); });
+    if (S.step === 2) ok = !!(S.files.license && S.files.insurance);
+    el('go').disabled = !ok || S.busy;
+  }
+
+  function alertOn(name, msg) {
+    var a = el(name);
+    a.textContent = msg || '';
+    a.classList.toggle('live', !!msg);
+  }
+
+  /* -------------------------------------------------------- calendar */
+  function renderCal() {
+    var y = S.view.y, m = S.view.m;
+    el('monthLabel').textContent = MONTHS[m] + ' ' + y;
+
+    var firstDow = new Date(Date.UTC(y, m, 1)).getUTCDay();
+    var count    = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    var key      = y + '-' + String(m + 1).padStart(2, '0');
+    var body     = el('calBody');
+
+    if (!S.loadedMonths[key]) {
+      body.innerHTML = '<div class="skel">' + new Array(35).join('<div></div>') + '</div>';
+      return;
+    }
+
+    var out = '<div class="grid" role="grid">';
+    for (var i = 0; i < firstDow; i++) out += '<div class="day pad"></div>';
+    for (var d = 1; d <= count; d++) {
+      var iso = ymd(y, m, d);
+      var free = S.avail[iso] > 0 && iso >= EARLIEST && iso <= LATEST;
+      var cls  = free ? 'free' : 'full';
+      if (S.date === iso) cls += ' sel';
+      out += free
+        ? '<button type="button" class="day ' + cls + '" data-date="' + iso + '" aria-label="' + esc(pretty(iso)) + ', available">' + d + '</button>'
+        : '<div class="day ' + cls + '" aria-disabled="true">' + d + '</div>';
+    }
+    out += '</div>';
+    body.innerHTML = out;
+
+    el('prev').disabled = (y + '-' + String(m + 1).padStart(2, '0')) <= TODAY.slice(0, 7);
+    el('next').disabled = ymd(y, m, 1) >= LATEST.slice(0, 8) + '01';
+  }
+
+  function loadMonth(y, m) {
+    var key = y + '-' + String(m + 1).padStart(2, '0');
+    if (S.loadedMonths[key]) { renderCal(); return Promise.resolve(); }
+
+    var from = ymd(y, m, 1);
+    var to   = ymd(y, m, new Date(Date.UTC(y, m + 1, 0)).getUTCDate());
+
+    return fetch(CFG.apiBase + '/api/public/availability?from=' + from + '&to=' + to, { headers: { Accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) {
+        Object.keys(j.days || {}).forEach(function (iso) { S.avail[iso] = j.days[iso].trucksFree; });
+        S.loadedMonths[key] = true;
+        alertOn('calAlert', '');
+        renderCal();
+      })
+      .catch(function () {
+        // Fail open: let people request a date, we confirm truck availability by hand.
+        var count = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+        for (var d = 1; d <= count; d++) S.avail[ymd(y, m, d)] = 1;
+        S.loadedMonths[key] = true;
+        alertOn('calAlert', 'We could not load live availability. You can still request a date and we will confirm by text.');
+        renderCal();
+      });
+  }
+
+  el('prev').addEventListener('click', function () {
+    S.view.m--; if (S.view.m < 0) { S.view.m = 11; S.view.y--; }
+    renderCal(); loadMonth(S.view.y, S.view.m);
+  });
+  el('next').addEventListener('click', function () {
+    S.view.m++; if (S.view.m > 11) { S.view.m = 0; S.view.y++; }
+    renderCal(); loadMonth(S.view.y, S.view.m);
+  });
+
+  el('calBody').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-date]');
+    if (!b) return;
+    S.date = b.getAttribute('data-date');
+    renderCal();
+    var last = addDays(S.date, CFG.rentalDays - 1);
+    el('pick').innerHTML =
+      'Pickup <b>' + esc(pretty(S.date)) + '</b>' +
+      '<em>Return by ' + esc(pretty(last)) + ' &middot; ' + esc(CFG.pickupAddress) + '</em>';
+    el('pick').classList.add('live');
+    syncGo();
+  });
+
+  /* ------------------------------------------------------ validation */
+  var RULES = {
+    firstName: function (v) { return v.trim().length >= 2 || 'Please enter your first name.'; },
+    lastName:  function (v) { return v.trim().length >= 2 || 'Please enter your last name.'; },
+    email:     function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) || 'That email does not look right.'; },
+    phone:     function (v) { var d = digits(v); return (d.length === 10 || (d.length === 11 && d[0] === '1')) || 'Enter a 10-digit US mobile number.'; }
+  };
+
+  function validate() {
+    var ok = true;
+    Object.keys(RULES).forEach(function (n) {
+      var input = $('[name=' + n + ']');
+      var res   = RULES[n](input.value);
+      var box   = root.querySelector('[data-err="' + n + '"]');
+      var bad   = res !== true;
+      input.setAttribute('aria-invalid', bad ? 'true' : 'false');
+      box.textContent = bad ? res : '';
+      box.classList.toggle('live', bad);
+      if (bad) ok = false;
+    });
+    return ok;
+  }
+
+  root.querySelectorAll('input[name]').forEach(function (i) {
+    i.addEventListener('input', syncGo);
+    i.addEventListener('blur', function () { if (i.value.trim()) validate(); });
+  });
+
+  /* -------------------------------------------------------- uploads */
+  function slot(kind, label) {
+    var box = root.querySelector('[data-slot="' + kind + '"]');
+    box.innerHTML =
+      '<div class="drop" tabindex="0" role="button">' +
+        '<b>Tap to upload ' + esc(label) + '</b>' +
+        '<small>JPG, PNG, HEIC or PDF &middot; up to ' + CFG.maxFileMB + ' MB</small>' +
+      '</div>' +
+      '<input type="file" accept="image/*,application/pdf" capture="environment" hidden>';
+
+    var drop  = box.querySelector('.drop');
+    var input = box.querySelector('input');
+
+    drop.addEventListener('click', function () { input.click(); });
+    drop.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
+    });
+    drop.addEventListener('drop', function (e) { if (e.dataTransfer.files[0]) handle(kind, label, e.dataTransfer.files[0]); });
+    input.addEventListener('change', function () { if (input.files[0]) handle(kind, label, input.files[0]); });
+  }
+
+  /** Downscale + re-encode to WebP in the browser. Falls back to the raw
+   *  file for PDFs and for formats the browser cannot decode (some HEIC). */
+  function toWebp(file, maxDim, quality) {
+    if (!/^image\//.test(file.type)) return Promise.resolve(file);
+    return createImageBitmap(file).then(function (bmp) {
+      var scale = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+      var w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+      bmp.close && bmp.close();
+      return new Promise(function (res) {
+        c.toBlob(function (b) {
+          res(b ? new File([b], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp' }) : file);
+        }, 'image/webp', quality);
+      });
+    }).catch(function () { return file; });
+  }
+
+  function handle(kind, label, file) {
+    var box = root.querySelector('[data-slot="' + kind + '"]');
+    var errBox = root.querySelector('[data-err="' + kind + '"]');
+    errBox.classList.remove('live');
+
+    if (file.size > CFG.maxFileMB * 1024 * 1024) {
+      errBox.textContent = 'That file is over ' + CFG.maxFileMB + ' MB. Try a photo instead of a scan.';
+      errBox.classList.add('live');
+      return;
+    }
+
+    var preview = /^image\//.test(file.type) ? URL.createObjectURL(file) : '';
+    box.innerHTML =
+      '<div class="thumb">' +
+        '<img alt="" src="' + preview + '">' +
+        '<div class="meta"><b>' + esc(file.name) + '</b><small data-el2="st">Optimising&hellip;</small>' +
+        '<div class="bar"><i></i></div></div>' +
+        '<button type="button" title="Remove">&times;</button>' +
+      '</div>';
+
+    box.querySelector('button').addEventListener('click', function () {
+      S.files[kind] = null;
+      slot(kind, label);
+      syncGo();
+    });
+
+    var st  = box.querySelector('[data-el2=st]');
+    var bar = box.querySelector('.bar i');
+
+    ensureDraft()
+      .then(function () { return toWebp(file, 1600, 0.82); })
+      .then(function (out) {
+        st.textContent = 'Uploading…';
+        bar.style.width = '35%';
+        var fd = new FormData();
+        fd.append('file', out, out.name);
+        fd.append('kind', kind === 'license' ? 'DRIVER_LICENSE' : 'INSURANCE');
+        fd.append('draftId', S.draftId);
+        return fetch(CFG.apiBase + '/api/public/uploads', { method: 'POST', body: fd })
+          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+          .then(function (j) {
+            bar.style.width = '100%';
+            st.textContent = Math.round(out.size / 1024) + ' KB · uploaded';
+            S.files[kind] = { id: j.id, name: out.name, size: out.size };
+            syncGo();
+          });
+      })
+      .catch(function () {
+        st.textContent = 'Upload failed — tap the X and try again.';
+        bar.style.width = '0';
+        S.files[kind] = null;
+        syncGo();
+      });
+  }
+
+  function ensureDraft() {
+    if (S.draftId) return Promise.resolve(S.draftId);
+    return fetch(CFG.apiBase + '/api/public/session', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { S.draftId = j.draftId; return S.draftId; })
+      .catch(function () {
+        S.draftId = 'local-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+        return S.draftId;
+      });
+  }
+
+  slot('license', 'driver’s license');
+  slot('insurance', 'proof of insurance');
+
+  /* -------------------------------------------------------- submit */
+  function submit() {
+    S.busy = true; syncGo();
+    alertOn('docAlert', '');
+
+    var payload = {
+      draftId:    S.draftId,
+      pickupDate: S.date,
+      firstName:  $('[name=firstName]').value.trim(),
+      lastName:   $('[name=lastName]').value.trim(),
+      email:      $('[name=email]').value.trim().toLowerCase(),
+      phone:      e164($('[name=phone]').value),
+      documents:  [S.files.license.id, S.files.insurance.id],
+      hp:         $('[name=company_website]').value,
+      source:     'ghl-widget',
+      pageUrl:    location.href
+    };
+
+    var driven = drive('Reserving your truck…');
+
+    var req = fetch(CFG.apiBase + '/api/public/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error(j.error || 'Something went wrong.');
+        return j;
+      });
+    });
+
+    Promise.all([driven, req]).then(function (out) {
+      var j = out[1];
+      el('doneMsg').textContent = 'We are reviewing it now. Your rental agreement is on its way by email and text — sign it and you are locked in.';
+      el('recap').innerHTML =
+        '<div><span>Reference</span><b>' + esc(j.reference || '—') + '</b></div>' +
+        '<div><span>Pickup date</span><b>' + esc(pretty(S.date)) + '</b></div>' +
+        '<div><span>Return by</span><b>' + esc(pretty(addDays(S.date, CFG.rentalDays - 1))) + '</b></div>' +
+        '<div><span>Pickup location</span><b>' + esc(CFG.pickupAddress) + '</b></div>' +
+        '<div><span>Confirmation to</span><b>' + esc(payload.email) + '</b></div>';
+      show(3);
+    }).catch(function (err) {
+      S.busy = false;
+      alertOn('docAlert', err.message === 'Failed to fetch'
+        ? 'We could not reach the booking server. Check your connection and try again.'
+        : err.message);
+      syncGo();
+    });
+  }
+
+  /* ---------------------------------------------------------- nav */
+  el('go').addEventListener('click', function () {
+    if (S.step === 0) {
+      drive('Loading your details…').then(function () { show(1); });
+      return;
+    }
+    if (S.step === 1) {
+      if (!validate()) return;
+      drive('Almost there…').then(function () { show(2); });
+      return;
+    }
+    if (S.step === 2) submit();
+  });
+
+  el('back').addEventListener('click', function () {
+    if (S.step > 0) show(S.step - 1);
+  });
+
+  /* --------------------------------------------------------- boot */
+  var p = TODAY.split('-');
+  S.view = { y: +p[0], m: +p[1] - 1 };
+  show(0);
+  renderCal();
+  loadMonth(S.view.y, S.view.m);
+})();
+</script>

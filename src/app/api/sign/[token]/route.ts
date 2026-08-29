@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import { ContractType, DocKind, DocPhase, Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
@@ -23,6 +24,28 @@ export const maxDuration = 60;
  */
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  try {
+    return await handleSign(req, token);
+  } catch (err) {
+    // An uncaught throw here becomes an opaque 500 in the renter's console and
+    // leaves no trace anywhere the office would look. Record it against the
+    // booking so it shows in the card's activity, and tell the renter something
+    // they can act on rather than "Internal Server Error".
+    console.error('sign failed', { token, err });
+    try {
+      const c = await prisma.contract.findUnique({ where: { token }, select: { bookingId: true } });
+      if (c) await logEvent(c.bookingId, 'sign_failed', String(err), 'system');
+    } catch {
+      /* logging must not mask the original failure */
+    }
+    return json(
+      { error: 'We could not save your signature. Please try once more — if it happens again, reply to your text and we will sort it out.' },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleSign(req: Request, token: string) {
   const ip = clientIp(req);
 
   const limit = rateLimit(`sign:${ip}`, 20, 10 * 60_000);
@@ -147,7 +170,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     await logEvent(b.id, 'pdf_failed', String(err), 'system');
   }
 
-  // ---- what happens next -------------------------------------------------
+  // ---- what happens next, AFTER the response ------------------------------
+  // A contact upsert plus an email and an SMS is three GoHighLevel round trips,
+  // each allowed up to ten seconds. Awaiting them here put the whole request
+  // within reach of the function timeout — and a timeout after the signature is
+  // already stored looks to the renter like the signing failed, so they sign
+  // again. The signature is committed above; none of this needs to block it.
+  after(async () => {
   try {
     if (isRental && addDriver) {
       await prisma.booking.update({
@@ -198,6 +227,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     console.error('post-sign flow failed', err);
     await logEvent(b.id, 'post_sign_failed', String(err), 'system');
   }
+  });
 
   return json({ ok: true, pdfUrl, pickupAddress: config.pickupAddress });
 }

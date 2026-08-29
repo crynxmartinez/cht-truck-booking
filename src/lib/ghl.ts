@@ -27,8 +27,9 @@ async function ghlFetch<T>(path: string, init: Omit<RequestInit, 'body'> & { bod
         ...(rest.headers ?? {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      // The office should never wait on a hung third party.
-      signal: AbortSignal.timeout(15_000),
+      // Bounded so a hung third party cannot drag a request toward the
+      // function timeout. Three calls at ten seconds still fits comfortably.
+      signal: AbortSignal.timeout(10_000),
     });
 
     const text = await res.text();

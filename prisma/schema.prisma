@@ -233,6 +233,9 @@ model Contract {
   signedAt DateTime?
 
   pdfUrl String?
+  // Blobs are private, so the pathname is the handle we actually fetch by.
+  // The renter reaches their copy through /api/files/contract/<token>.
+  pdfPathname String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

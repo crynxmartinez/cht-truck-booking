@@ -33,7 +33,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     include: { booking: { include: { truck: true } } },
   });
   if (!contract) return json({ error: 'This link is not valid.' }, { status: 404 });
-  if (contract.status === 'SIGNED') return json({ ok: true, pdfUrl: contract.pdfUrl });
+  if (contract.status === 'SIGNED') {
+    return json({ ok: true, pdfUrl: contract.pdfPathname ? `${config.appUrl}/api/files/contract/${token}` : null });
+  }
   if (contract.status === 'VOID') return json({ error: 'This agreement was replaced.' }, { status: 410 });
   if (contract.booking.stage === 'CANCELLED') return json({ error: 'This booking was cancelled.' }, { status: 410 });
 
@@ -133,8 +135,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       });
 
       await recordDocument({ bookingId: b.id, kind: DocKind.SIGNED_CONTRACT, phase: DocPhase.CONTRACT, file: stored });
-      await prisma.contract.update({ where: { id: contract.id }, data: { pdfUrl: stored.url } });
-      pdfUrl = stored.url;
+      await prisma.contract.update({
+        where: { id: contract.id },
+        data: { pdfUrl: stored.url, pdfPathname: stored.pathname },
+      });
+      // The blob itself is private; the renter reads it back through their token.
+      pdfUrl = `${config.appUrl}/api/files/contract/${token}`;
     }
   } catch (err) {
     console.error('contract pdf failed', err);

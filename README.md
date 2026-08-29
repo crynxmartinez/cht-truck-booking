@@ -38,8 +38,26 @@ npm run seed
 ```
 
 `seed` upserts Truck A and Truck B from the environment and creates the first admin
-account. It is idempotent — safe to re-run. **Change the admin password after your
-first sign-in.**
+row. It is idempotent — safe to re-run.
+
+> ### ⚠️ The CRM has no login
+>
+> Commit `9ab08df` removed the staff sign-in: `/app` renders for anyone who reaches
+> it, and `/login` no longer exists. The `admin_users` row the seed creates is
+> currently unused.
+>
+> Anyone with the URL can read every renter's name, email, phone, home address,
+> licence number, date of birth and insurance policy number, open their uploaded
+> licence and insurance photos, and read **both trucks' lockbox codes** on
+> `/app/trucks`. That last one is physical access to the vehicles, not just data.
+>
+> Private blobs and signed file links (below) limit the blast radius — links expire
+> and can be revoked — but they cannot substitute for the door being locked, because
+> the CRM itself mints fresh links to anyone who loads it.
+>
+> Restoring it means putting back `getSession`/`createSession`/`verifyLogin` in
+> `src/lib/auth.ts`, the `/login` page, and the redirect in `src/app/app/layout.tsx`.
+> All three are intact in commit `37ce803`.
 
 ### 3. Blob storage
 
@@ -147,6 +165,24 @@ after a timeout, collides on the insert and quietly does nothing.
 Photos are downscaled to 1600px and re-encoded as WebP in the browser, then again
 server-side with sharp — an iPhone HEIC that the browser could not decode still
 arrives normalised. A 4 MB phone photo lands around 180 KB.
+
+**Everything is stored `access: 'private'`.** No uploaded file is fetchable by URL.
+There are exactly two ways bytes reach a browser:
+
+| Route | Who | Credential |
+|---|---|---|
+| `/api/files/<documentId>?e=&s=` | Staff, from the CRM | HMAC signature over id + expiry, valid one hour |
+| `/api/files/contract/<token>` | The renter | Their own contract token — the same string that let them sign |
+
+A public blob URL is permanent and unrevocable the moment it leaks into a forwarded
+email, a screenshot or a browser history. These are driver's licences. The signed
+staff links expire within the hour; the contract link deliberately does not, because
+people come back to their own agreement months later.
+
+Uploads are capped at 4 MB — Vercel rejects a Serverless Function request body over
+4.5 MB before our handler runs. The browser converts to WebP *before* that check, so
+a 12 MB phone photo is fine; only PDFs and images the browser cannot re-encode can
+trip it.
 
 A nightly job totals Blob usage. Over `BLOB_PURGE_START_PCT` (80%) it deletes the
 oldest **eligible** files until back under `BLOB_PURGE_TARGET_PCT` (70%).

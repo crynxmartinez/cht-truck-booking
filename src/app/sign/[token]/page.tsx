@@ -75,7 +75,7 @@ export default async function SignPage({ params }: { params: Promise<{ token: st
           prefill={prefill}
           mainRenterName={`${b.firstName} ${b.lastName}`.trim()}
           alreadySigned={contract.status === 'SIGNED'}
-          pdfUrl={contract.pdfUrl}
+          pdfUrl={contract.pdfPathname ? `/api/files/contract/${token}` : null}
         />
       </div>
       <PageFooter />

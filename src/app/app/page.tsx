@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { BOARD_STAGES } from '@/lib/stages';
 import { dateToIso, formatMedium, formatStamp } from '@/lib/dates';
 import { checklistUrl, signUrl } from '@/lib/tokens';
+import { signedFilePath } from '@/lib/file-urls';
 import { Board } from './Board';
 import type { BookingDetail, CardData } from './types';
 
@@ -31,11 +32,13 @@ async function loadDetail(id: string): Promise<BookingDetail | null> {
     additionalDriverName: b.additionalDriver?.name ?? null,
     additionalDriverContact:
       [b.additionalDriver?.email, b.additionalDriver?.phone].filter(Boolean).join(' · ') || null,
+    // Blobs are private. Mint a short-lived signed link per file so the board
+    // can render thumbnails without the underlying object ever being public.
     documents: b.documents.map((d) => ({
       id: d.id,
       kind: d.kind,
       phase: d.phase,
-      url: d.url,
+      url: signedFilePath(d.id),
       isImage: d.contentType.startsWith('image/'),
     })),
     contracts: b.contracts.map((k) => ({
@@ -44,7 +47,7 @@ async function loadDetail(id: string): Promise<BookingDetail | null> {
       status: k.status,
       signerName: k.signerName,
       signedLabel: k.signedAt ? formatStamp(k.signedAt) : k.viewedAt ? `viewed ${formatStamp(k.viewedAt)}` : '—',
-      pdfUrl: k.pdfUrl,
+      pdfUrl: k.pdfPathname ? `/api/files/contract/${k.token}` : null,
       link: signUrl(k.token),
     })),
     checklists: b.checklists.map((k) => ({

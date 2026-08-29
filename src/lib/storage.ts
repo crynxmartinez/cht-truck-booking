@@ -1,4 +1,4 @@
-import { put, del, list } from '@vercel/blob';
+import { put, del, list, get } from '@vercel/blob';
 import sharp from 'sharp';
 import { DocKind, DocPhase } from '@prisma/client';
 import { prisma } from './db';
@@ -66,10 +66,13 @@ export async function storeFile(opts: {
 }): Promise<StoredFile> {
   const pathname = `${opts.folder}/${opts.name}.${opts.ext}`;
   const res = await put(pathname, opts.data, {
-    access: 'public',
+    // Private. These are driver's licences, insurance cards and signed
+    // contracts — a public blob URL is permanent and unrevocable the moment it
+    // leaks into a forwarded email or a screenshot. Everything is served back
+    // through /api/files, which checks the caller first.
+    access: 'private',
     contentType: opts.contentType,
-    // Blob URLs already carry a long random suffix; adding another keeps two
-    // uploads with the same logical name from colliding.
+    // Two uploads of the same logical name must not collide.
     addRandomSuffix: true,
   });
   return {
@@ -78,6 +81,16 @@ export async function storeFile(opts: {
     contentType: opts.contentType,
     bytes: opts.data.byteLength,
   };
+}
+
+/**
+ * Read a private blob back for streaming to an authorised caller.
+ * Returns null when the blob is missing, so the route can 404 cleanly.
+ */
+export async function readBlob(pathname: string) {
+  const res = await get(pathname, { access: 'private' });
+  if (!res || res.statusCode !== 200 || !res.stream) return null;
+  return { stream: res.stream, contentType: res.blob.contentType, size: res.blob.size };
 }
 
 export async function recordDocument(opts: {
@@ -179,13 +192,13 @@ export async function purgeToTarget(): Promise<{ deleted: number; freedBytes: nu
     },
     orderBy: { createdAt: 'asc' },
     take: 2000,
-    select: { id: true, url: true, bytes: true },
+    select: { id: true, pathname: true, bytes: true },
   });
 
   for (const doc of candidates) {
     if (before.totalBytes - freed <= targetBytes) break;
     try {
-      await del(doc.url);
+      await del(doc.pathname);
     } catch {
       // Already gone from the store — still mark it so we stop counting it.
     }

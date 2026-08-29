@@ -229,6 +229,42 @@ export async function purgeToTarget(): Promise<{ deleted: number; freedBytes: nu
 }
 
 /**
+ * Hard-delete uploads from bookings that were never completed.
+ *
+ * Someone opens the widget, uploads their driver's licence, then closes the
+ * tab. The draft id only ever lived in that page's memory, so nothing will
+ * ever claim those files — and they are ID documents belonging to a person who
+ * is not even a customer. The quota purge would not touch them until storage
+ * crossed 80%, which for two trucks could be years.
+ *
+ * Deletes the blob and the row together, so nothing is left stranded.
+ */
+export async function purgeAbandonedDrafts(olderThanDays = 7): Promise<{ deleted: number; freedBytes: number }> {
+  const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);
+
+  const rows = await prisma.document.findMany({
+    where: { bookingId: null, draftId: { not: null }, createdAt: { lte: cutoff }, deletedAt: null },
+    select: { id: true, pathname: true, bytes: true },
+    take: 1000,
+  });
+
+  let freedBytes = 0;
+  for (const r of rows) {
+    try {
+      await del(r.pathname);
+    } catch {
+      // Already gone from the store; still drop the row.
+    }
+    freedBytes += r.bytes;
+  }
+  if (rows.length) {
+    await prisma.document.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+  }
+
+  return { deleted: rows.length, freedBytes };
+}
+
+/**
  * Delete blobs that no Document row points at any more.
  *
  * The purge job above is driven off the database, which leaves a hole: Document

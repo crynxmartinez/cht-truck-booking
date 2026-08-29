@@ -5,7 +5,7 @@ import { addDays, hourInOps, isoToDate, todayInOps } from '@/lib/dates';
 import { isAuthorisedCron } from '@/lib/auth';
 import { json } from '@/lib/http';
 import { logEvent, notify, setStage } from '@/lib/notify';
-import { purgeToTarget, reconcileOrphanBlobs } from '@/lib/storage';
+import { purgeAbandonedDrafts, purgeToTarget, reconcileOrphanBlobs } from '@/lib/storage';
 import { cancelBooking } from '@/lib/bookings';
 
 export const runtime = 'nodejs';
@@ -163,13 +163,14 @@ async function dailySweep(today: string) {
   }
   out.closed = toClose.length;
 
-  // --- orphaned draft uploads older than a day
-  const orphanCutoff = new Date(Date.now() - 24 * 3600_000);
-  const orphans = await prisma.document.updateMany({
-    where: { bookingId: null, draftId: { not: null }, createdAt: { lte: orphanCutoff }, purgeEligibleAt: null },
-    data: { purgeEligibleAt: new Date() },
-  });
-  out.orphansMarked = orphans.count;
+  // --- uploads from bookings nobody ever completed
+  // Deleted outright rather than queued behind the quota rule: these are ID
+  // documents belonging to someone who never became a customer.
+  try {
+    out.abandonedDrafts = await purgeAbandonedDrafts(7);
+  } catch (err) {
+    out.abandonedDrafts = { error: String(err) };
+  }
 
   // --- storage
   try {

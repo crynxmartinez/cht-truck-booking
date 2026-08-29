@@ -40,24 +40,25 @@ npm run seed
 `seed` upserts Truck A and Truck B from the environment and creates the first admin
 row. It is idempotent — safe to re-run.
 
-> ### ⚠️ The CRM has no login
+> ### The CRM has no login — by design
 >
-> Commit `9ab08df` removed the staff sign-in: `/app` renders for anyone who reaches
-> it, and `/login` no longer exists. The `admin_users` row the seed creates is
-> currently unused.
+> `/app` is open to anyone who reaches it; there is no sign-in page. The
+> `admin_users` row the seed creates is currently unused.
 >
-> Anyone with the URL can read every renter's name, email, phone, home address,
-> licence number, date of birth and insurance policy number, open their uploaded
-> licence and insurance photos, and read **both trucks' lockbox codes** on
-> `/app/trucks`. That last one is physical access to the vehicles, not just data.
+> Two things follow from that, worth knowing rather than rediscovering:
 >
-> Private blobs and signed file links (below) limit the blast radius — links expire
-> and can be revoked — but they cannot substitute for the door being locked, because
-> the CRM itself mints fresh links to anyone who loads it.
+> - Treat the deployment URL as the only thing standing between the board and the
+>   public. Don't put it in anything indexable.
+> - `/app/trucks` displays both lockbox codes in plain text. Rotate them on a
+>   schedule — the CRM edits them live, and confirmed bookings pick up the new
+>   code automatically, because the pickup message is not composed until 6 AM on
+>   the day.
 >
-> Restoring it means putting back `getSession`/`createSession`/`verifyLogin` in
-> `src/lib/auth.ts`, the `/login` page, and the redirect in `src/app/app/layout.tsx`.
-> All three are intact in commit `37ce803`.
+> Uploaded files are *not* covered by this: they are private blobs behind signed,
+> expiring links (see Storage below), so they stay protected independently.
+>
+> If a login is ever wanted back, `getSession`/`createSession`/`verifyLogin`, the
+> `/login` page and the layout redirect are all intact in commit `37ce803`.
 
 ### 3. Blob storage
 

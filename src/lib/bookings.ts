@@ -1,6 +1,6 @@
 import { Stage } from '@prisma/client';
 import { prisma } from './db';
-import { logEvent, setStage } from './notify';
+import { logEvent, notifyStaff, setStage } from './notify';
 import { markPurgeEligible } from './storage';
 
 /**
@@ -29,6 +29,7 @@ export async function cancelBooking(bookingId: string, reason: string, actor = '
     data: { status: 'VOID' },
   });
   await logEvent(bookingId, 'cancelled', reason || 'Cancelled', actor);
+  await notifyStaff(bookingId, 'cancelled', { detail: reason || null });
 }
 
 /** Put a cancelled or auto-released booking back in play. */

@@ -6,7 +6,7 @@ import { earliestBookable, isIsoDate, latestBookable, rentalWindow } from '@/lib
 import { cleanString, clientIp, isEmail, json, preflight, rateLimit, toE164 } from '@/lib/http';
 import { newReference, newToken } from '@/lib/tokens';
 import { adoptDraftDocuments } from '@/lib/storage';
-import { logEvent, notify, setStage } from '@/lib/notify';
+import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -148,6 +148,7 @@ export async function POST(req: Request) {
       await notify(booking.id, 'booking_received');
       await notify(booking.id, 'contract_to_sign');
       await setStage(booking.id, Stage.CONTRACT_SENT, 'system', 'Rental agreement sent automatically');
+      await notifyStaff(booking.id, 'booking_received');
     } catch (err) {
       console.error('notify failed', err);
       await logEvent(booking.id, 'notify_failed', String(err), 'system');

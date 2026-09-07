@@ -254,6 +254,41 @@ input[aria-invalid='true'] {
   margin-top: 5px;
 }
 
+/* consent checkbox — big enough to hit on a phone */
+.check {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  margin-bottom: 4px;
+}
+.check:hover {
+  border-color: var(--line-2);
+}
+.check input {
+  width: 20px;
+  height: 20px;
+  margin: 1px 0 0;
+  flex: none;
+  accent-color: var(--red);
+  cursor: pointer;
+}
+.check em {
+  font-style: normal;
+  color: var(--red);
+}
+.check[data-invalid='true'] {
+  border-color: var(--red);
+  background: var(--red-wash);
+}
+
 /* ---------------------------------------------------------------- buttons */
 
 .btn {

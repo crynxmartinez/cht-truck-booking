@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Terms } from './Terms';
 import { SignaturePad } from './SignaturePad';
-import { DAMAGE_WAIVER_NOTICE, READ_AND_SIGN } from '@/lib/contract-terms';
+import { DAMAGE_WAIVER_NOTICE, READ_AND_SIGN, TOLL_AGREEMENT, TOLL_CHECKBOX_LABEL } from '@/lib/contract-terms';
 
 export type SignFormProps = {
   token: string;
@@ -55,6 +55,7 @@ export function SignForm(props: SignFormProps) {
   });
 
   const [initials, setInitials] = useState('');
+  const [tollAccepted, setTollAccepted] = useState(false);
   const [wantsAdditional, setWantsAdditional] = useState<'yes' | 'no' | ''>('');
   const [addDriver, setAddDriver] = useState({ name: '', email: '', phone: '' });
   const [signature, setSignature] = useState<string | null>(null);
@@ -98,6 +99,7 @@ export function SignForm(props: SignFormProps) {
     need('insurancePolicyNo', 'Policy number', 3);
 
     if (initials.trim().length < 2) e.initials = 'Please initial the damage waiver.';
+    if (!tollAccepted) e.toll = 'Please tick the toll agreement to continue.';
     if (!isAdditional && !wantsAdditional) e.wantsAdditional = 'Please answer yes or no.';
     if (!isAdditional && wantsAdditional === 'yes') {
       if (addDriver.name.trim().length < 2) e.adName = "Enter the additional driver's name.";
@@ -129,6 +131,7 @@ export function SignForm(props: SignFormProps) {
           initials,
           signerName: signerName || f.clientName || f.name,
           signatureDataUrl: signature,
+          tollAccepted,
           additionalDriver: !isAdditional && wantsAdditional === 'yes' ? addDriver : null,
         }),
       });
@@ -369,6 +372,23 @@ export function SignForm(props: SignFormProps) {
           />
           <Err k="initials" />
         </div>
+
+        <h3>Tolls</h3>
+        <div className="note warn">{TOLL_AGREEMENT}</div>
+        <label className="check" {...inv('toll')}>
+          <input
+            type="checkbox"
+            checked={tollAccepted}
+            onChange={(e) => {
+              setTollAccepted(e.target.checked);
+              setErrors((p) => ({ ...p, toll: '' }));
+            }}
+          />
+          <span>
+            {TOLL_CHECKBOX_LABEL} <em>*</em>
+          </span>
+        </label>
+        <Err k="toll" />
 
         {!isAdditional ? (
           <>

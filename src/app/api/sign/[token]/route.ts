@@ -8,7 +8,7 @@ import { fullTermsText, TERMS_VERSION } from '@/lib/contract-terms';
 import { hashTerms, newToken } from '@/lib/tokens';
 import { buildContractPdf } from '@/lib/pdf';
 import { blobConfigured, recordDocument, storeFile } from '@/lib/storage';
-import { logEvent, notify, setStage } from '@/lib/notify';
+import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -75,6 +75,7 @@ async function handleSign(req: Request, token: string) {
   const initials = cleanString(body.initials, 5).toUpperCase();
   const signerName = cleanString(body.signerName, 120) || fields.clientName || fields.name || '';
   const signatureDataUrl = typeof body.signatureDataUrl === 'string' ? body.signatureDataUrl : '';
+  const tollAccepted = body.tollAccepted === true;
 
   const isRental = contract.type === ContractType.RENTAL_AGREEMENT;
   const b = contract.booking;
@@ -105,6 +106,7 @@ async function handleSign(req: Request, token: string) {
 
   if (!signerName) return json({ error: 'Please enter your name.' }, { status: 400 });
   if (initials.length < 2) return json({ error: 'Please initial the damage waiver.' }, { status: 400 });
+  if (!tollAccepted) return json({ error: 'Please agree to cover any tolls before signing.' }, { status: 400 });
   if (!/^data:image\/(png|jpeg);base64,/.test(signatureDataUrl)) {
     return json({ error: 'Please sign before submitting.' }, { status: 400 });
   }
@@ -123,6 +125,8 @@ async function handleSign(req: Request, token: string) {
       signerName,
       signerEmail: isRental ? b.email : fields.email || null,
       initials,
+      tollAcknowledged: true,
+      tollAcknowledgedAt: signedAt,
       signatureData: signatureDataUrl,
       payload: fields as never,
       termsVersion: TERMS_VERSION,
@@ -153,6 +157,7 @@ async function handleSign(req: Request, token: string) {
         fields,
         signerName,
         initials,
+        tollAcknowledged: true,
         signatureDataUrl,
         signedAt,
         ipAddress: ip,
@@ -199,6 +204,7 @@ async function handleSign(req: Request, token: string) {
       if (outstanding === 0) {
         await setStage(b.id, Stage.CONFIRMED, 'system', 'All agreements signed');
         await notify(b.id, 'rental_confirmed');
+        await notifyStaff(b.id, 'confirmed');
       }
     }
   } catch (err) {
@@ -254,6 +260,7 @@ async function inviteAdditionalDriver(
   });
 
   await setStage(bookingId, Stage.ADDITIONAL_DRIVER, 'system', 'Renter named an additional driver');
+  await notifyStaff(bookingId, 'additional_driver_invited', { additionalDriverName: driver.name });
   await notify(bookingId, 'additional_driver', {
     to: {
       firstName: driver.name.split(' ')[0] ?? driver.name,

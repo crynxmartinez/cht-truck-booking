@@ -87,6 +87,24 @@ export const config = {
     signerName: str('RENTAL_AUTHORITY_NAME', 'Diana Alsup Munoz'),
     signatureUrl: process.env.RENTAL_AUTHORITY_SIGNATURE_URL || '',
   },
+
+  /**
+   * Who gets told when a rental moves. Every customer-facing event fires a
+   * short internal copy to this person as well.
+   *
+   * SMS can be switched off on its own: a busy month is roughly five texts per
+   * rental, and the email carries the same information with more of it.
+   */
+  staff: {
+    name: str('STAFF_NAME', 'Diana Alsup'),
+    email: str('STAFF_EMAIL', 'diana@coryhometeam.com'),
+    phone: str('STAFF_PHONE', '+15625568184'),
+    notifyEnabled: bool('STAFF_NOTIFY_ENABLED', true),
+    smsEnabled: bool('STAFF_SMS_ENABLED', true),
+    get configured() {
+      return Boolean(this.notifyEnabled && this.email && this.phone);
+    },
+  },
 } as const;
 
 export type AppConfig = typeof config;

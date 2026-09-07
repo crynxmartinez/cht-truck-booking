@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
 import { json } from '@/lib/http';
-import { logEvent } from '@/lib/notify';
+import { logEvent, notifyStaff } from '@/lib/notify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,6 +60,7 @@ export async function POST(req: Request) {
   if (wantsReschedule && !booking.rescheduleAsked) {
     await prisma.booking.update({ where: { id: booking.id }, data: { rescheduleAsked: true, needsReview: true } });
     await logEvent(booking.id, 'reschedule_requested', message.slice(0, 500), 'renter');
+    await notifyStaff(booking.id, 'reschedule_requested', { detail: message.slice(0, 200) });
     return json({ ok: true, flagged: 'reschedule', reference: booking.reference });
   }
 

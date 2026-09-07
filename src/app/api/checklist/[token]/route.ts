@@ -1,7 +1,7 @@
 import { Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { cleanString, clientIp, isEmail, json, rateLimit } from '@/lib/http';
-import { logEvent, notify, setStage } from '@/lib/notify';
+import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import { buildSteps } from '@/lib/checklist-steps';
 
 export const runtime = 'nodejs';
@@ -85,12 +85,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     if (isReturn) {
       await setStage(checklist.bookingId, Stage.RETURNED, 'system', 'Return checklist submitted');
       await notify(checklist.bookingId, 'thank_you');
+      await notifyStaff(checklist.bookingId, 'returned', { reportedTime, detail: notes || null });
       // Photos become purge-eligible only once the office closes the booking.
       if (notes) {
         await prisma.booking.update({ where: { id: checklist.bookingId }, data: { needsReview: true, reviewNote: notes } });
       }
     } else {
       await setStage(checklist.bookingId, Stage.IN_USE, 'system', 'Pickup checklist submitted');
+      await notifyStaff(checklist.bookingId, 'picked_up', { reportedTime });
     }
   } catch (err) {
     console.error('checklist post-submit failed', err);

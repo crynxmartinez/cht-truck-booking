@@ -3,6 +3,7 @@ import { prisma } from './db';
 import { config } from './config';
 import { dateToIso } from './dates';
 import { render, toHtml, type MessageContext, type TemplateKey } from './messages';
+import { isUrgent, renderStaff, type StaffContext, type StaffEvent } from './staff-messages';
 import { sendEmail, sendSms, upsertContact } from './ghl';
 
 /**
@@ -106,52 +107,52 @@ async function ensureContact(
   return { contactId: res.data.contactId };
 }
 
-export async function notify(
-  bookingId: string,
-  template: TemplateKey,
-  options: NotifyOptions = {},
-): Promise<{ sent: MessageChannel[]; skipped: MessageChannel[]; errors: string[] }> {
-  const channels = options.channels ?? [MessageChannel.EMAIL, MessageChannel.SMS];
+type Body = { subject: string; email: string; sms: string };
+type Recipient = { firstName: string; lastName: string; email: string; phone: string };
+
+/**
+ * The one place a message actually leaves the building.
+ *
+ * The MessageLog row is claimed *before* the provider is called, and the unique
+ * index on (bookingId, template, channel) is what makes that a lock: a retried
+ * cron collides on the insert and quietly does nothing rather than sending
+ * twice. Customer and staff messages share this so neither can drift.
+ */
+async function dispatch(opts: {
+  bookingId: string;
+  template: string;
+  channels: MessageChannel[];
+  recipient: Recipient;
+  body: Body;
+  force?: boolean;
+  resolveContact: () => Promise<{ contactId: string } | { error: string }>;
+}): Promise<{ sent: MessageChannel[]; skipped: MessageChannel[]; errors: string[] }> {
+  const { bookingId, template, channels, recipient, body, force } = opts;
   const sent: MessageChannel[] = [];
   const skipped: MessageChannel[] = [];
   const errors: string[] = [];
 
-  const built = await buildContext(bookingId);
-  if (!built) return { sent, skipped, errors: ['Booking not found.'] };
-
-  const { booking, ctx } = built;
-  const recipient = options.to ?? {
-    firstName: booking.firstName,
-    lastName: booking.lastName,
-    email: booking.email,
-    phone: booking.phone,
-  };
-  const isRenter = !options.to;
-
-  const body = render(template, options.to ? { ...ctx, firstName: recipient.firstName } : ctx);
+  // Resolved lazily and once, so a run that skips every channel never touches GHL.
+  let contactPromise: Promise<{ contactId: string } | { error: string }> | null = null;
 
   for (const channel of channels) {
-    // --- claim the slot first; a duplicate insert means somebody beat us here
+    const payload = {
+      toAddress: channel === MessageChannel.EMAIL ? recipient.email : recipient.phone,
+      subject: channel === MessageChannel.EMAIL ? body.subject : null,
+      body: channel === MessageChannel.EMAIL ? body.email : body.sms,
+    };
+
     let logId: string;
     try {
       const log = await prisma.messageLog.create({
-        data: {
-          bookingId,
-          template,
-          channel,
-          status: MessageStatus.QUEUED,
-          toAddress: channel === MessageChannel.EMAIL ? recipient.email : recipient.phone,
-          subject: channel === MessageChannel.EMAIL ? body.subject : null,
-          body: channel === MessageChannel.EMAIL ? body.email : body.sms,
-        },
+        data: { bookingId, template, channel, status: MessageStatus.QUEUED, ...payload },
       });
       logId = log.id;
     } catch {
-      if (!options.force) {
+      if (!force) {
         skipped.push(channel);
         continue;
       }
-      // Forced resend: reuse the existing row rather than violating the index.
       const existing = await prisma.messageLog.findUnique({
         where: { bookingId_template_channel: { bookingId, template, channel } },
       });
@@ -162,13 +163,7 @@ export async function notify(
       logId = existing.id;
       await prisma.messageLog.update({
         where: { id: logId },
-        data: {
-          status: MessageStatus.QUEUED,
-          error: null,
-          toAddress: channel === MessageChannel.EMAIL ? recipient.email : recipient.phone,
-          subject: channel === MessageChannel.EMAIL ? body.subject : null,
-          body: channel === MessageChannel.EMAIL ? body.email : body.sms,
-        },
+        data: { status: MessageStatus.QUEUED, error: null, ...payload },
       });
     }
 
@@ -181,7 +176,8 @@ export async function notify(
       continue;
     }
 
-    const contact = await ensureContact(bookingId, recipient, booking.ghlContactId, isRenter);
+    contactPromise ??= opts.resolveContact();
+    const contact = await contactPromise;
     if ('error' in contact) {
       await prisma.messageLog.update({
         where: { id: logId },
@@ -212,6 +208,140 @@ export async function notify(
   }
 
   return { sent, skipped, errors };
+}
+
+export async function notify(
+  bookingId: string,
+  template: TemplateKey,
+  options: NotifyOptions = {},
+): Promise<{ sent: MessageChannel[]; skipped: MessageChannel[]; errors: string[] }> {
+  const built = await buildContext(bookingId);
+  if (!built) return { sent: [], skipped: [], errors: ['Booking not found.'] };
+
+  const { booking, ctx } = built;
+  const recipient = options.to ?? {
+    firstName: booking.firstName,
+    lastName: booking.lastName,
+    email: booking.email,
+    phone: booking.phone,
+  };
+  const isRenter = !options.to;
+
+  return dispatch({
+    bookingId,
+    template,
+    channels: options.channels ?? [MessageChannel.EMAIL, MessageChannel.SMS],
+    recipient,
+    force: options.force,
+    body: render(template, options.to ? { ...ctx, firstName: recipient.firstName } : ctx),
+    resolveContact: () => ensureContact(bookingId, recipient, booking.ghlContactId, isRenter),
+  });
+}
+
+
+// ---------------------------------------------------------------- staff
+
+const STAFF_CONTACT_KEY = 'ghl.staff.contactId';
+
+/**
+ * Diana's GHL contact id, cached in Settings.
+ *
+ * Without this every alert would upsert her again — five extra API calls per
+ * rental for a contact that never changes.
+ */
+async function staffContactId(): Promise<{ contactId: string } | { error: string }> {
+  const cached = await prisma.setting.findUnique({ where: { key: STAFF_CONTACT_KEY } });
+  if (cached?.value) return { contactId: cached.value };
+
+  const [firstName, ...rest] = config.staff.name.split(' ');
+  const res = await upsertContact({
+    firstName: firstName || 'Office',
+    lastName: rest.join(' '),
+    email: config.staff.email,
+    phone: config.staff.phone,
+    tags: ['truck-ops-staff'],
+  });
+  if (!res.ok) return { error: res.error };
+
+  await prisma.setting
+    .upsert({
+      where: { key: STAFF_CONTACT_KEY },
+      create: { key: STAFF_CONTACT_KEY, value: res.data.contactId },
+      update: { value: res.data.contactId },
+    })
+    .catch(() => undefined);
+
+  return { contactId: res.data.contactId };
+}
+
+/**
+ * Tell the office a rental moved.
+ *
+ * Never throws and never blocks: an alert failing must not roll back the thing
+ * it was reporting on. Failures land in MessageLog like any other send, so the
+ * booking card shows them.
+ */
+export async function notifyStaff(
+  bookingId: string,
+  event: StaffEvent,
+  extra: Partial<StaffContext> = {},
+): Promise<void> {
+  if (!config.staff.configured) return;
+
+  try {
+    const b = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        reference: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        pickupDate: true,
+        returnDate: true,
+        truck: { select: { code: true } },
+        additionalDriver: { select: { name: true } },
+      },
+    });
+    if (!b) return;
+
+    const ctx: StaffContext = {
+      reference: b.reference,
+      renterName: `${b.firstName} ${b.lastName}`.trim(),
+      renterEmail: b.email,
+      renterPhone: b.phone,
+      truckCode: b.truck?.code ?? null,
+      pickupDate: dateToIso(b.pickupDate),
+      returnDate: dateToIso(b.returnDate),
+      additionalDriverName: b.additionalDriver?.name ?? null,
+      ...extra,
+    };
+
+    // Routine progress can be email-only if the texts get noisy; anything that
+    // needs acting on today always texts, whatever that setting says.
+    const wantsSms = config.staff.smsEnabled || isUrgent(event);
+    const channels = wantsSms
+      ? [MessageChannel.EMAIL, MessageChannel.SMS]
+      : [MessageChannel.EMAIL];
+
+    await dispatch({
+      bookingId,
+      // Namespaced so a staff alert can never collide with the customer
+      // template of the same name in the idempotency index.
+      template: `staff_${event}`,
+      channels,
+      recipient: {
+        firstName: config.staff.name.split(' ')[0] ?? 'Office',
+        lastName: config.staff.name.split(' ').slice(1).join(' '),
+        email: config.staff.email,
+        phone: config.staff.phone,
+      },
+      body: renderStaff(event, ctx),
+      resolveContact: staffContactId,
+    });
+  } catch (err) {
+    console.error('staff notify failed', event, err);
+  }
 }
 
 /** Append to the booking's activity log. Never throws — logging must not break a flow. */

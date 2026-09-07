@@ -4,7 +4,7 @@ import { config } from '@/lib/config';
 import { addDays, hourInOps, isoToDate, todayInOps } from '@/lib/dates';
 import { isAuthorisedCron } from '@/lib/auth';
 import { json } from '@/lib/http';
-import { logEvent, notify, setStage } from '@/lib/notify';
+import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import { purgeAbandonedDrafts, purgeToTarget, reconcileOrphanBlobs } from '@/lib/storage';
 import { cancelBooking } from '@/lib/bookings';
 
@@ -146,6 +146,9 @@ async function dailySweep(today: string) {
     if (!b.overdue) {
       await prisma.booking.update({ where: { id: b.id }, data: { overdue: true } });
       await logEvent(b.id, 'overdue', 'Truck not returned by the due date', 'system');
+      // Only on the day it tips over. The renter keeps getting nudged daily;
+      // the office does not need the same text every morning.
+      await notifyStaff(b.id, 'overdue');
     }
     await notify(b.id, 'overdue');
   }

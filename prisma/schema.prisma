@@ -222,6 +222,11 @@ model Contract {
   initials    String?
   signatureData String? @db.Text // data URL of the drawn or typed signature
 
+  // Tolls are acknowledged with their own tick rather than only inside the
+  // terms, so the answer is queryable and provable on its own.
+  tollAcknowledged   Boolean   @default(false)
+  tollAcknowledgedAt DateTime?
+
   // Audit trail: what they saw, from where, when.
   termsVersion String?
   termsHash    String?

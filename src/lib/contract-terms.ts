@@ -12,7 +12,7 @@
  * counsel before the next version.
  */
 
-export const TERMS_VERSION = '2026-08-30.1';
+export const TERMS_VERSION = '2026-09-07.1';
 
 export type Clause = { n: string; title?: string; body: string[]; sub?: string[] };
 
@@ -266,6 +266,18 @@ export const WAIVER_CLOSING =
 export const DAMAGE_WAIVER_NOTICE =
   'COMPREHENSIVE / COLLISION DAMAGE WAIVER Notice: The Customer is responsible for all collision damage resulting from insufficient height or width clearances and the first $2,500.00 of any other loss or damage.';
 
+/**
+ * Tolls. Separately acknowledged rather than buried in the terms, because the
+ * charge arrives weeks later by post and lands on the registered owner — so
+ * this is the clause most likely to be disputed, and a tick with a timestamp
+ * beside it is worth more than a paragraph nobody remembers reading.
+ */
+export const TOLL_AGREEMENT =
+  'I understand this vehicle is not enrolled in any toll or express-lane transponder programme. If I use a toll road, bridge, express lane or any other charged route during my rental, the charge is billed to Cory Home Team as the registered owner, and I agree to reimburse Cory Home Team in full for that charge plus any late fee, penalty or administrative fee that comes with it. Toll notices can take several weeks to arrive, and I remain responsible for them after the rental has ended.';
+
+export const TOLL_CHECKBOX_LABEL =
+  'I agree to pay for any tolls I incur during this rental, including any fees or penalties.';
+
 export const READ_AND_SIGN =
   'I have read and agree to be bound by the terms and conditions of both sides of this agreement. I have read and understand the limitations of all offered and declined insurance packages.';
 
@@ -277,6 +289,6 @@ export function fullTermsText(): string {
     parts.push(...c.body);
     if (c.sub) parts.push(...c.sub);
   }
-  parts.push(WAIVER_INTRO, WAIVER_CLOSING, DAMAGE_WAIVER_NOTICE, READ_AND_SIGN);
+  parts.push(WAIVER_INTRO, WAIVER_CLOSING, DAMAGE_WAIVER_NOTICE, TOLL_AGREEMENT, READ_AND_SIGN);
   return parts.join('\n');
 }

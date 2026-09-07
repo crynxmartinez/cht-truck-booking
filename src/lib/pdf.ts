@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
 import { config } from './config';
 import {
   DAMAGE_WAIVER_NOTICE,
+  TOLL_AGREEMENT,
   READ_AND_SIGN,
   RENTAL_CLAUSES,
   RENTAL_INTRO,
@@ -35,6 +36,7 @@ export type ContractPdfInput = {
   fields: Record<string, string>;
   signerName: string;
   initials: string;
+  tollAcknowledged: boolean;
   signatureDataUrl?: string | null;
   signedAt: Date;
   ipAddress?: string | null;
@@ -243,6 +245,29 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     ['Policy number', f.insurancePolicyNo ?? ''],
     ['', ''],
   ]);
+
+  w.rule(12);
+  w.text('TOLLS', { size: 9, font: w.bold, gap: 5 });
+  w.text(TOLL_AGREEMENT, { size: 8.5, color: MUTED, gap: 6 });
+  // Drawn as a real ticked box: a reader should see the consent, not read that
+  // it happened.
+  const boxY = w.y;
+  w.page.drawRectangle({
+    x: M, y: boxY - 10, width: 10, height: 10,
+    borderColor: input.tollAcknowledged ? RED : RULE, borderWidth: 1,
+  });
+  if (input.tollAcknowledged) {
+    w.page.drawText('X', { x: M + 2.2, y: boxY - 8.2, size: 8, font: w.bold, color: RED });
+  }
+  w.page.drawText(
+    sanitise(
+      input.tollAcknowledged
+        ? 'Agreed to pay all tolls, fees and penalties incurred during this rental.'
+        : 'NOT AGREED',
+    ),
+    { x: M + 16, y: boxY - 8, size: 8.5, font: w.bold, color: INK },
+  );
+  w.y = boxY - 22;
 
   w.rule(12);
   w.text('CUSTOMER MUST READ AND SIGN HERE', { size: 9, font: w.bold, gap: 5 });

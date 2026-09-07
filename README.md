@@ -153,6 +153,35 @@ Jobs: `pickup`, `return`, `nopickup`, `sweep`.
 > granularity only. The free alternative is pointing an external scheduler
 > (cron-job.org, or a GHL recurring workflow) at the same endpoint with the secret.
 
+### The office gets told too
+
+Every stage change fires a short internal email and SMS to the person in
+`STAFF_EMAIL` / `STAFF_PHONE`, separate from whatever the customer receives.
+Deliberately one alert per transition, so a clean rental is four messages, not
+a running commentary:
+
+| Event | Fires when |
+|---|---|
+| `staff_booking_received` | Form submitted, truck assigned, agreement sent |
+| `staff_additional_driver_invited` | Renter named a second driver |
+| `staff_confirmed` | Every agreement signed |
+| `staff_picked_up` | Pickup checklist submitted |
+| `staff_returned` | Return checklist submitted — includes any note they left |
+| `staff_overdue` | The day a truck tips past its return date, once, not daily |
+| `staff_reschedule_requested` | Renter replied RESCHEDULE |
+| `staff_cancelled` | Booking cancelled or auto-released |
+
+The copy is written for a phone glance — truck, date and name first, no
+greeting. Every one fits in a single SMS segment.
+
+`STAFF_SMS_ENABLED=false` keeps the emails and drops the routine texts.
+Overdue and reschedule still text regardless, because they need action today.
+
+Diana's GHL contact id is cached in `Setting` under `ghl.staff.contactId`, so
+alerts do not re-upsert her on every event. Staff templates are namespaced
+`staff_*`, so they share the idempotency index below without ever colliding
+with a customer template of the same name.
+
 ### Nothing gets sent twice
 
 `MessageLog` has a unique index on `(bookingId, template, channel)` and the sender
@@ -211,6 +240,16 @@ Signing is disabled until the reader scrolls to the end. Each signature stores t
 signer's name, the drawn or typed image, their IP, user agent, timestamp,
 `TERMS_VERSION` and a SHA-256 of the exact wording shown. Bump `TERMS_VERSION`
 whenever a single word changes.
+
+Tolls are acknowledged with their own tick box, not just buried in the terms.
+The signature is refused server-side without it, and `Contract.tollAcknowledged`
+plus its timestamp are stored as columns so the answer is queryable rather than
+only present inside the payload JSON. The signed PDF draws the ticked box above
+the signature block, so a reader sees the consent rather than reading that it
+happened.
+
+The trucks carry no transponder, so a toll bills to Cory Home Team as registered
+owner and arrives weeks later. That delay is why this one gets its own tick.
 
 > **For review:** clause 13(a) of the Rental Agreement specifies **Texas** law while
 > clause 12 of the Waiver bound behind it specifies **California** law, venue in

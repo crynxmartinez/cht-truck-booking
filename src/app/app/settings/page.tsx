@@ -36,6 +36,16 @@ export default async function SettingsPage() {
             : 'Not connected. Connect a Blob store in Vercel, then redeploy so the deployment picks up BLOB_STORE_ID — uploads are refused until it does.',
     },
     {
+      label: 'Staff alerts',
+      ok: config.staff.configured,
+      detail: !config.staff.notifyEnabled
+        ? 'Switched off — nobody is told when a rental moves. Set STAFF_NOTIFY_ENABLED.'
+        : `${config.staff.name} · ${config.staff.email} · ${config.staff.phone}` +
+          (config.staff.smsEnabled
+            ? ' — email and SMS on every stage change.'
+            : ' — email only. Overdue and reschedule still text.'),
+    },
+    {
       label: 'Cron secret',
       ok: Boolean(config.cronSecret),
       detail: config.cronSecret
@@ -143,6 +153,13 @@ export default async function SettingsPage() {
                       {config.checklist.exteriorPhotos ? 'On' : 'Off'}
                     </span>{' '}
                     <span className="tiny">CHECKLIST_EXTERIOR_PHOTOS</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Toll clause</td>
+                  <td>
+                    <span className="tag green">Required</span>{' '}
+                    <span className="tiny">renter must tick it before the signature is accepted</span>
                   </td>
                 </tr>
                 <tr>

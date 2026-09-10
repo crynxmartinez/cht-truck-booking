@@ -6,6 +6,7 @@ import { STAGE_META, STAGE_LABEL } from '@/lib/stages';
 import type { ActionResult } from './actions';
 import { addNote, cancel, clearFlags, moveStage, reopen, resend, switchTruck } from './actions';
 import type { BookingDetail, TruckOption } from './types';
+import { StaffDropoffUpload } from './StaffDropoffUpload';
 
 const RESENDABLE: Array<{ key: string; label: string }> = [
   { key: 'contract_to_sign', label: 'Contract link' },
@@ -200,7 +201,14 @@ export function BookingModal({
                   {detail.checklists.map((k) => (
                     <tr key={k.phase}>
                       <td>{k.phase === 'PICKUP' ? 'Pickup' : 'Drop-off'}</td>
-                      <td>{k.submittedLabel}</td>
+                      <td>
+                        {k.submittedLabel}
+                        {k.completionSource ? (
+                          <small style={{ display: 'block', color: 'var(--faint)' }}>
+                            {k.completionSource === 'STAFF' ? `staff · ${k.completedBy ?? 'ops'}` : 'renter'}
+                          </small>
+                        ) : null}
+                      </td>
                       <td>{k.reportedTime ?? '—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <a href={k.link} target="_blank" rel="noreferrer">
@@ -221,6 +229,21 @@ export function BookingModal({
                 .join(' · ')}
             </p>
           ) : null}
+          {detail.checklists.some((k) => k.overrideReason) ? (
+            <p className="tiny" style={{ marginTop: 8, color: 'var(--warn)' }}>
+              Staff override:{' '}
+              {detail.checklists.find((k) => k.overrideReason)?.overrideReason}
+            </p>
+          ) : null}
+
+          {c.stage !== 'CANCELLED' && detail.checklists.some((k) => k.phase === 'DROPOFF') ? (
+            <div style={{ marginTop: 12 }}>
+              <StaffDropoffUpload
+                bookingId={c.id}
+                alreadySubmitted={Boolean(detail.checklists.find((k) => k.phase === 'DROPOFF')?.submitted)}
+              />
+            </div>
+          ) : null}
 
           <div className="sect">Photos &amp; documents ({detail.documents.length})</div>
           {detail.documents.length === 0 ? (
@@ -228,14 +251,26 @@ export function BookingModal({
           ) : (
             <div className="docgrid">
               {detail.documents.map((d) => (
-                <a key={d.id} href={d.url} target="_blank" rel="noreferrer" title={`${d.kind} · ${d.phase}`}>
+                <a
+                  key={d.id}
+                  href={d.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`${d.kind} · ${d.phase}${d.uploadedBy ? ` · uploaded by ${d.uploadedBy}` : ''}`}
+                >
                   {d.isImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={d.url} alt={d.kind} loading="lazy" />
                   ) : (
                     <div className="pdf">PDF</div>
                   )}
-                  <div className="lbl">{d.kind.replace(/_/g, ' ').toLowerCase()}</div>
+                  <div className="lbl">
+                    <span>{d.kind.replace(/_/g, ' ').toLowerCase()}</span>
+                    <small>
+                      {d.phase.toLowerCase()} · {d.source === 'RENTER' ? 'renter' : d.source.replace('STAFF_', 'staff ').toLowerCase()}
+                    </small>
+                    {d.uploadedBy ? <small>by {d.uploadedBy}</small> : null}
+                  </div>
                 </a>
               ))}
             </div>

@@ -160,6 +160,18 @@ enum DocPhase {
   CONTRACT
 }
 
+enum DocumentSource {
+  RENTER
+  STAFF_EMAIL
+  STAFF_SMS
+  STAFF_OTHER
+}
+
+enum ChecklistCompletionSource {
+  RENTER
+  STAFF
+}
+
 model Document {
   id        String  @id @default(cuid())
   bookingId String?
@@ -176,6 +188,14 @@ model Document {
   pathname    String
   contentType String
   bytes       Int
+
+  // Who supplied the evidence. Staff uploads must remain distinguishable
+  // from photos submitted by the renter through their checklist link.
+  source           DocumentSource @default(RENTER)
+  originalFilename String?
+  receivedAt       DateTime?
+  uploadedBy       String?
+  staffNote        String?        @db.Text
 
   // Set when the booking completes. The purge job only ever considers rows
   // where this is non-null and in the past.
@@ -281,6 +301,10 @@ model Checklist {
   sentAt      DateTime?
   openedAt    DateTime?
   submittedAt DateTime?
+
+  completionSource ChecklistCompletionSource?
+  completedBy      String?
+  overrideReason   String?                   @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

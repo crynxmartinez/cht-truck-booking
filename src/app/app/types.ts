@@ -26,6 +26,10 @@ export type DocData = {
   id: string;
   kind: string;
   phase: string;
+  source: string;
+  uploadedBy: string | null;
+  receivedLabel: string | null;
+  originalFilename: string | null;
   url: string;
   isImage: boolean;
 };
@@ -42,9 +46,13 @@ export type ContractData = {
 
 export type ChecklistData = {
   phase: string;
+  submitted: boolean;
   submittedLabel: string;
   reportedTime: string | null;
   notes: string | null;
+  completionSource: string | null;
+  completedBy: string | null;
+  overrideReason: string | null;
   link: string;
 };
 

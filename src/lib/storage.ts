@@ -1,6 +1,6 @@
 import { put, del, list, get } from '@vercel/blob';
 import sharp from 'sharp';
-import { DocKind, DocPhase } from '@prisma/client';
+import { DocKind, DocPhase, DocumentSource } from '@prisma/client';
 import { prisma } from './db';
 import { config } from './config';
 
@@ -117,6 +117,11 @@ export async function recordDocument(opts: {
   kind: DocKind;
   phase: DocPhase;
   file: StoredFile;
+  source?: DocumentSource;
+  originalFilename?: string | null;
+  receivedAt?: Date | null;
+  uploadedBy?: string | null;
+  staffNote?: string | null;
 }) {
   return prisma.document.create({
     data: {
@@ -128,6 +133,11 @@ export async function recordDocument(opts: {
       pathname: opts.file.pathname,
       contentType: opts.file.contentType,
       bytes: opts.file.bytes,
+      source: opts.source ?? DocumentSource.RENTER,
+      originalFilename: opts.originalFilename ?? null,
+      receivedAt: opts.receivedAt ?? null,
+      uploadedBy: opts.uploadedBy ?? null,
+      staffNote: opts.staffNote ?? null,
     },
   });
 }

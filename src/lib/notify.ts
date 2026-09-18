@@ -195,13 +195,18 @@ async function dispatch(opts: {
     if (res.ok) {
       await prisma.messageLog.update({
         where: { id: logId },
-        data: { status: MessageStatus.SENT, sentAt: new Date(), providerId: res.data.messageId ?? null },
+        data: {
+          status: MessageStatus.SENT,
+          sentAt: new Date(),
+          providerId: res.data.messageId ?? null,
+          providerContactId: contact.contactId,
+        },
       });
       sent.push(channel);
     } else {
       await prisma.messageLog.update({
         where: { id: logId },
-        data: { status: MessageStatus.FAILED, error: res.error },
+        data: { status: MessageStatus.FAILED, error: res.error, providerContactId: contact.contactId },
       });
       errors.push(`${channel}: ${res.error}`);
     }
@@ -244,30 +249,49 @@ export async function notify(
 const STAFF_CONTACT_KEY = 'ghl.staff.contactId';
 
 /**
- * Diana's GHL contact id, cached in Settings.
+ * Diana's GHL contact id, cached in Settings so five alerts per rental do not
+ * mean five upserts.
  *
- * Without this every alert would upsert her again — five extra API calls per
- * rental for a contact that never changes.
+ * The cache stores the email and phone it was resolved FOR, and is discarded
+ * when either no longer matches config. Without that, a cache written against
+ * one recipient keeps being used after STAFF_EMAIL changes — which is exactly
+ * what happened here: an id resolved during local testing sat in the shared
+ * Settings row for ten days, and every alert went to the test contact while
+ * the message log recorded Diana's address.
  */
 async function staffContactId(): Promise<{ contactId: string } | { error: string }> {
+  const want = { email: config.staff.email, phone: config.staff.phone };
+
   const cached = await prisma.setting.findUnique({ where: { key: STAFF_CONTACT_KEY } });
-  if (cached?.value) return { contactId: cached.value };
+  if (cached?.value) {
+    try {
+      const v = JSON.parse(cached.value);
+      if (v.contactId && v.email === want.email && v.phone === want.phone) {
+        return { contactId: v.contactId as string };
+      }
+      console.warn('[staff] cached contact was resolved for a different recipient — re-resolving');
+    } catch {
+      // A bare id from an older build, with no record of who it was for.
+      console.warn('[staff] cached contact has no recipient recorded — re-resolving');
+    }
+  }
 
   const [firstName, ...rest] = config.staff.name.split(' ');
   const res = await upsertContact({
     firstName: firstName || 'Office',
     lastName: rest.join(' '),
-    email: config.staff.email,
-    phone: config.staff.phone,
+    email: want.email,
+    phone: want.phone,
     tags: ['truck-ops-staff'],
   });
   if (!res.ok) return { error: res.error };
 
+  const value = JSON.stringify({ ...want, contactId: res.data.contactId });
   await prisma.setting
     .upsert({
       where: { key: STAFF_CONTACT_KEY },
-      create: { key: STAFF_CONTACT_KEY, value: res.data.contactId },
-      update: { value: res.data.contactId },
+      create: { key: STAFF_CONTACT_KEY, value },
+      update: { value },
     })
     .catch(() => undefined);
 

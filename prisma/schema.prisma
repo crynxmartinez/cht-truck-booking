@@ -342,6 +342,10 @@ model MessageLog {
   body      String? @db.Text
 
   providerId String?
+  // The GHL contact the message was actually delivered to. toAddress records
+  // who we meant; this records who the provider used. They diverged once and
+  // nothing caught it for ten days.
+  providerContactId String?
   error      String? @db.Text
 
   createdAt DateTime  @default(now())

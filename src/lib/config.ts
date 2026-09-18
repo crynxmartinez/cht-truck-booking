@@ -99,6 +99,15 @@ export const config = {
     name: str('STAFF_NAME', 'Diana Alsup'),
     email: str('STAFF_EMAIL', 'diana@coryhometeam.com'),
     phone: str('STAFF_PHONE', '+15625568184'),
+    /**
+     * Where the office opens the board. Diana works inside GoHighLevel, where
+     * the CRM is embedded as a custom menu link, so alerts should land her
+     * there rather than on the bare Vercel domain.
+     */
+    boardUrl: str(
+      'STAFF_BOARD_URL',
+      'https://app.crushitmarketing.net/v2/location/G49ae08TwjSXTitzYXfP/custom-menu-link/be7f1327-f42b-429f-b33a-7a7ca75d26f7',
+    ),
     notifyEnabled: bool('STAFF_NOTIFY_ENABLED', true),
     smsEnabled: bool('STAFF_SMS_ENABLED', true),
     get configured() {

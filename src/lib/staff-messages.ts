@@ -47,7 +47,7 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
   const pickup = formatMedium(c.pickupDate);
   const back = formatMedium(c.returnDate);
   const who = c.renterName;
-  const board = `${config.appUrl}/app`;
+  const board = config.staff.boardUrl;
 
   // Every email ends with the same block, so the details are always in the
   // same place regardless of which event fired.
@@ -60,6 +60,7 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
     `Due back: ${back}`,
     `Ref:      ${c.reference}`,
     ``,
+    `Open the board:`,
     board,
   ].join('\n');
 
@@ -74,7 +75,7 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
       return wrap(
         `New booking — ${who}, ${truck}, ${pickup}`,
         `${who} just booked ${truck} for ${pickup}. Licence and insurance are on file, and the rental agreement has gone out automatically.`,
-        `NEW BOOKING · ${who} · ${truck} · ${pickup}. Agreement sent. ${board}`,
+        `NEW BOOKING · ${who} · ${truck} · ${pickup}. Agreement sent.`,
       );
 
 

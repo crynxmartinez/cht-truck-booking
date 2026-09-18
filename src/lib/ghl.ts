@@ -90,6 +90,26 @@ export async function upsertContact(input: UpsertContactInput): Promise<GhlResul
   return { ok: true, data: { contactId: String(id) } };
 }
 
+/**
+ * Find an existing contact by email, without touching it.
+ *
+ * upsertContact() overwrites whatever it is given — including the name — so it
+ * is the wrong tool for resolving somebody who is already in the CRM. Looking
+ * up the staff contact this way means an alert can never rename or otherwise
+ * edit a record the office curates by hand.
+ */
+export async function findContactByEmail(email: string): Promise<GhlResult<{ contactId: string | null }>> {
+  const res = await ghlFetch<any>(
+    `/contacts/?locationId=${encodeURIComponent(config.ghl.locationId)}&query=${encodeURIComponent(email)}&limit=10`,
+    { method: 'GET' },
+  );
+  if (!res.ok) return res;
+
+  const wanted = email.trim().toLowerCase();
+  const hit = (res.data?.contacts ?? []).find((c: any) => (c.email ?? '').toLowerCase() === wanted);
+  return { ok: true, data: { contactId: hit?.id ? String(hit.id) : null } };
+}
+
 // ---------------------------------------------------------------- messaging
 
 export async function sendSms(contactId: string, message: string): Promise<GhlResult<{ messageId?: string }>> {

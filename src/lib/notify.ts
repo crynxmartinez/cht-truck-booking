@@ -4,7 +4,7 @@ import { config } from './config';
 import { dateToIso } from './dates';
 import { render, toHtml, type MessageContext, type TemplateKey } from './messages';
 import { isUrgent, renderStaff, type StaffContext, type StaffEvent } from './staff-messages';
-import { sendEmail, sendSms, upsertContact } from './ghl';
+import { findContactByEmail, sendEmail, sendSms, upsertContact } from './ghl';
 
 /**
  * The only way anything leaves this system.
@@ -276,17 +276,26 @@ async function staffContactId(): Promise<{ contactId: string } | { error: string
     }
   }
 
-  const [firstName, ...rest] = config.staff.name.split(' ');
-  const res = await upsertContact({
-    firstName: firstName || 'Office',
-    lastName: rest.join(' '),
-    email: want.email,
-    phone: want.phone,
-    tags: ['truck-ops-staff'],
-  });
-  if (!res.ok) return { error: res.error };
+  // Look first. The office curates this contact by hand — an upsert would
+  // overwrite whatever they named it, which is how "diana truck automation"
+  // silently became "diana alsup".
+  const found = await findContactByEmail(want.email);
+  let contactId: string | null = found.ok ? found.data.contactId : null;
 
-  const value = JSON.stringify({ ...want, contactId: res.data.contactId });
+  if (!contactId) {
+    const [firstName, ...rest] = config.staff.name.split(' ');
+    const res = await upsertContact({
+      firstName: firstName || 'Office',
+      lastName: rest.join(' '),
+      email: want.email,
+      phone: want.phone,
+      tags: ['truck-ops-staff'],
+    });
+    if (!res.ok) return { error: res.error };
+    contactId = res.data.contactId;
+  }
+
+  const value = JSON.stringify({ ...want, contactId });
   await prisma.setting
     .upsert({
       where: { key: STAFF_CONTACT_KEY },
@@ -295,7 +304,7 @@ async function staffContactId(): Promise<{ contactId: string } | { error: string
     })
     .catch(() => undefined);
 
-  return { contactId: res.data.contactId };
+  return { contactId };
 }
 
 /**

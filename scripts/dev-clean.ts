@@ -13,7 +13,7 @@ async function main() {
     bookings: await prisma.booking.count(),
     documents: await prisma.document.count(),
     trucks: await prisma.truck.count(),
-    admins: await prisma.adminUser.count(),
+    recipients: await prisma.notificationRecipient.count(),
   };
   console.log('remaining:', JSON.stringify(counts));
 }

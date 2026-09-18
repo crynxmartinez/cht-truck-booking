@@ -13,6 +13,7 @@ export type TemplateKey =
   | 'contract_to_sign'
   | 'contract_nudge'
   | 'additional_driver'
+  | 'dates_changed'
   | 'rental_confirmed'
   | 'pickup_morning'
   | 'pickup_no_show_check'
@@ -130,6 +131,29 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
         sms:
           `Hi ${c.additionalDriverName ?? 'there'}, ${c.renterName ?? 'someone'} listed you as an additional ` +
           `driver on a Cory Home Team truck rental for ${pickup}. Sign here: ${sign} — Diana`,
+      };
+
+    case 'dates_changed':
+      return {
+        subject: `Your truck rental has moved to ${pickup}`,
+        email: [
+          `Hi ${c.firstName},`,
+          ``,
+          `Your ${truck} rental has been moved. The new dates are:`,
+          ``,
+          `Pickup:   ${pickup}`,
+          `Due back: ${back}`,
+          ``,
+          `Everything else is unchanged — same pickup at ${addr}, and you will`,
+          `still get a text at 6 AM on the day with the lockbox code.`,
+          ``,
+          `If these dates do not work, reply and let us know.`,
+          ``,
+          SIGNOFF,
+        ].join('\n'),
+        sms:
+          `Hi ${c.firstName}, your Cory Home Team truck rental has moved. New pickup ` +
+          `${c.pickupDate}, back ${c.returnDate}. Reply if that does not work. — Diana`,
       };
 
     case 'rental_confirmed':

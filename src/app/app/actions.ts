@@ -5,9 +5,10 @@ import { Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { reassignTruck, NoTruckAvailableError } from '@/lib/availability';
 import { cancelBooking, completeBooking, reopenBooking } from '@/lib/bookings';
-import { logEvent, notify, setStage } from '@/lib/notify';
+import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import type { TemplateKey } from '@/lib/messages';
 import { isoToDate, isIsoDate } from '@/lib/dates';
+import { isEmail, toE164 } from '@/lib/http';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -146,4 +147,173 @@ export async function removeBlackout(id: string): Promise<ActionResult> {
   revalidatePath('/app/blackouts');
   revalidatePath('/app/calendar');
   return { ok: true, message: 'Blackout removed.' };
+}
+
+// ---------------------------------------------------------------- dates
+
+/**
+ * Move a booking. `days` is explicit so a genuine two-day exception is possible
+ * without changing the default for everybody.
+ */
+export async function changeDates(
+  bookingId: string,
+  newPickup: string,
+  days: number,
+  reason: string,
+): Promise<ActionResult> {
+  const who = await actor();
+  if (!isIsoDate(newPickup)) return { ok: false, error: 'Pick a valid date.' };
+  if (!Number.isFinite(days) || days < 1 || days > 30) return { ok: false, error: 'Length must be 1 to 30 days.' };
+
+  try {
+    const { rescheduleBooking } = await import('@/lib/availability');
+    const res = await rescheduleBooking(bookingId, newPickup, days);
+
+    // Date-driven messages are idempotent per booking, so their log rows would
+    // suppress the sends for the NEW date. Clear them so they fire again.
+    await prisma.messageLog.deleteMany({
+      where: {
+        bookingId,
+        template: { in: ['pickup_morning', 'return_day', 'pickup_no_show_check', 'overdue', 'staff_overdue'] },
+      },
+    });
+
+    await logEvent(
+      bookingId,
+      'dates_changed',
+      `Moved from ${res.from.start}–${res.from.end} to ${res.to.start}–${res.to.end}` + (reason ? ` — ${reason}` : ''),
+      who,
+    );
+
+    // Tell the renter and the office. A silent move means somebody turns up on
+    // the wrong day.
+    await notify(bookingId, 'dates_changed', { force: true });
+    await notifyStaff(bookingId, 'dates_changed', { detail: reason || null });
+
+    return done(`Moved to ${res.to.start} – ${res.to.end}. The renter has been told.`);
+  } catch (err) {
+    if (err instanceof NoTruckAvailableError) return { ok: false, error: err.message };
+    console.error('changeDates failed', err);
+    return { ok: false, error: 'Could not move that booking.' };
+  }
+}
+
+// ---------------------------------------------------------------- approvals
+
+export async function approveContractAction(contractId: string): Promise<ActionResult> {
+  await actor();
+  try {
+    const { approveContract } = await import('@/lib/approvals');
+    const r = await approveContract(contractId);
+    if (r.alreadySigned) return { ok: true, message: 'Already signed.' };
+    return done(r.confirmed ? 'Signed. The renter has been confirmed.' : 'Signed. Still waiting on another signature.');
+  } catch (err) {
+    const { ApprovalError } = await import('@/lib/approvals');
+    if (err instanceof ApprovalError) return { ok: false, error: err.message };
+    console.error('approveContract failed', err);
+    return { ok: false, error: 'Could not sign that.' };
+  }
+}
+
+export async function approveChecklistAction(checklistId: string): Promise<ActionResult> {
+  await actor();
+  try {
+    const { approveChecklist } = await import('@/lib/approvals');
+    const r = await approveChecklist(checklistId);
+    if (r.alreadySigned) return { ok: true, message: 'Already signed.' };
+    return done('Signed off.');
+  } catch (err) {
+    const { ApprovalError } = await import('@/lib/approvals');
+    if (err instanceof ApprovalError) return { ok: false, error: err.message };
+    console.error('approveChecklist failed', err);
+    return { ok: false, error: 'Could not sign that.' };
+  }
+}
+
+// ---------------------------------------------------------------- recipients
+
+export async function saveRecipient(input: {
+  id?: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: 'MAIN_ADMIN' | 'ADMIN';
+  notifyEmail: boolean;
+  notifySms: boolean;
+  active: boolean;
+}): Promise<ActionResult> {
+  await actor();
+
+  const name = input.name.trim().slice(0, 120);
+  const email = input.email.trim().toLowerCase().slice(0, 254);
+  const phone = toE164(input.phone.trim());
+
+  if (name.length < 2) return { ok: false, error: 'Enter their name.' };
+  if (!isEmail(email)) return { ok: false, error: 'Enter a valid email address.' };
+  if (!phone) return { ok: false, error: 'Enter a 10-digit US mobile number.' };
+
+  const clash = await prisma.notificationRecipient.findFirst({
+    where: { email, ...(input.id ? { id: { not: input.id } } : {}) },
+  });
+  if (clash) return { ok: false, error: 'Somebody on the list already uses that email.' };
+
+  const data = {
+    name, email, phone,
+    role: input.role,
+    notifyEmail: input.notifyEmail,
+    notifySms: input.notifySms,
+    active: input.active,
+  };
+
+  const saved = input.id
+    ? await prisma.notificationRecipient.update({ where: { id: input.id }, data })
+    : await prisma.notificationRecipient.create({ data });
+
+  // Contact details changed means the cached GHL id may point elsewhere.
+  if (input.id) {
+    await prisma.notificationRecipient.updateMany({
+      where: { id: input.id, OR: [{ email: { not: email } }, { phone: { not: phone } }] },
+      data: { ghlContactId: null },
+    });
+  }
+
+  // Exactly one main admin. Promoting somebody demotes the incumbent.
+  if (input.role === 'MAIN_ADMIN') {
+    await prisma.notificationRecipient.updateMany({
+      where: { id: { not: saved.id }, role: 'MAIN_ADMIN' },
+      data: { role: 'ADMIN' },
+    });
+  }
+
+  revalidatePath('/app/notifications');
+  return { ok: true, message: `${saved.name} saved.` };
+}
+
+export async function saveRecipientSignature(id: string, signatureData: string): Promise<ActionResult> {
+  await actor();
+  if (!/^data:image\/(png|jpeg);base64,/.test(signatureData)) {
+    return { ok: false, error: 'Draw or type a signature first.' };
+  }
+  if (signatureData.length > 900_000) return { ok: false, error: 'That signature image is too large.' };
+
+  await prisma.notificationRecipient.update({ where: { id }, data: { signatureData } });
+  revalidatePath('/app/notifications');
+  return { ok: true, message: 'Signature saved. It is stamped on each approval from now on.' };
+}
+
+export async function removeRecipient(id: string): Promise<ActionResult> {
+  await actor();
+  const r = await prisma.notificationRecipient.findUnique({ where: { id } });
+  if (!r) return { ok: false, error: 'Already gone.' };
+
+  if (r.role === 'MAIN_ADMIN') {
+    return {
+      ok: false,
+      error: 'That is the main admin, who signs the paperwork. Make somebody else main admin first.',
+    };
+  }
+
+  await prisma.notificationRecipient.delete({ where: { id } });
+  revalidatePath('/app/notifications');
+  return { ok: true, message: `${r.name} removed from the list.` };
 }

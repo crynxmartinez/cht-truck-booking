@@ -26,8 +26,14 @@ async function loadDetail(id: string): Promise<BookingDetail | null> {
   });
   if (!b) return null;
 
+  const pickupIso = dateToIso(b.pickupDate);
+  const rentalDays =
+    Math.round((b.blockEnd.getTime() - b.blockStart.getTime()) / 86_400_000) + 1;
+
   return {
     card: toCard(b),
+    rentalDays,
+    pickupIso,
     reviewNote: b.reviewNote,
     additionalDriverName: b.additionalDriver?.name ?? null,
     additionalDriverContact:
@@ -50,12 +56,15 @@ async function loadDetail(id: string): Promise<BookingDetail | null> {
       type: k.type,
       status: k.status,
       signerName: k.signerName,
+      counterSignedLabel: k.counterSignedAt ? `${k.counterSignerName ?? 'Admin'} · ${formatStamp(k.counterSignedAt)}` : null,
       signedLabel: k.signedAt ? formatStamp(k.signedAt) : k.viewedAt ? `viewed ${formatStamp(k.viewedAt)}` : '—',
       pdfUrl: k.pdfPathname ? `/api/files/contract/${k.token}` : null,
       link: signUrl(k.token),
     })),
     checklists: b.checklists.map((k) => ({
+      id: k.id,
       phase: k.phase,
+      counterSignedLabel: k.counterSignedAt ? `${k.counterSignerName ?? 'Admin'} · ${formatStamp(k.counterSignedAt)}` : null,
       submitted: Boolean(k.submittedAt),
       submittedLabel: k.submittedAt ? formatStamp(k.submittedAt) : k.openedAt ? `opened ${formatStamp(k.openedAt)}` : '—',
       reportedTime: k.reportedTime,

@@ -45,6 +45,6 @@ async function main() {
   for (const t of trucks) {
     console.log(`  Truck ${t.code}  plate ${t.plate}  ${t.year}  lockbox ${t.lockboxCode}  ${t.active ? 'bookable' : 'off calendar'}`);
   }
-  console.log('KEPT — admin rows:', await prisma.adminUser.count());
+  console.log('KEPT — notification recipients:', await prisma.notificationRecipient.count());
 }
 main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());

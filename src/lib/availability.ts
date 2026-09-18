@@ -17,6 +17,9 @@ export const HOLDING_STAGES: Stage[] = [
   Stage.NEW_BOOKING,
   Stage.CONTRACT_SENT,
   Stage.ADDITIONAL_DRIVER,
+  // Waiting on the main admin still holds the truck — the renter has signed
+  // and is expecting it; only the paperwork is outstanding.
+  Stage.AWAITING_APPROVAL,
   Stage.CONFIRMED,
   Stage.PICKUP_DAY,
   Stage.IN_USE,
@@ -221,5 +224,80 @@ export async function reassignTruck(bookingId: string, truckId: string) {
       data: { truckId },
       include: { truck: true },
     });
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 });
+}
+
+
+/**
+ * Move a booking to new dates.
+ *
+ * Takes the same row lock as the original booking, so a move cannot collide
+ * with another rental or a blackout that lands between the check and the write.
+ *
+ * `days` is explicit rather than always RENTAL_BLOCK_DAYS, because the office
+ * needs to honour a genuine two-day exception without bending the default for
+ * everyone.
+ */
+export async function rescheduleBooking(bookingId: string, newPickup: IsoDate, days: number) {
+  const span = Math.max(1, Math.min(days, 30));
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM trucks WHERE active = true ORDER BY code ASC FOR UPDATE`;
+
+    const booking = await tx.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: { truck: true },
+    });
+    if (!booking.truckId) throw new NoTruckAvailableError('That booking has no truck assigned.');
+
+    const blockStart = newPickup;
+    const blockEnd = addDays(newPickup, span - 1);
+    const start = isoToDate(blockStart);
+    const end = isoToDate(blockEnd);
+
+    const clash = await tx.booking.findFirst({
+      where: {
+        id: { not: bookingId },
+        truckId: booking.truckId,
+        stage: { in: HOLDING_STAGES },
+        blockStart: { lte: end },
+        blockEnd: { gte: start },
+      },
+      select: { reference: true, firstName: true, lastName: true },
+    });
+    if (clash) {
+      throw new NoTruckAvailableError(
+        `Truck ${booking.truck?.code} is already out then — ${clash.firstName} ${clash.lastName} (${clash.reference}).`,
+      );
+    }
+
+    const blackout = await tx.blackoutDate.findFirst({
+      where: { truckId: booking.truckId, startDate: { lte: end }, endDate: { gte: start } },
+      select: { reason: true },
+    });
+    if (blackout) {
+      throw new NoTruckAvailableError(`Truck ${booking.truck?.code} is blacked out then (${blackout.reason}).`);
+    }
+
+    const updated = await tx.booking.update({
+      where: { id: bookingId },
+      data: {
+        pickupDate: start,
+        blockStart: start,
+        returnDate: end,
+        blockEnd: end,
+        // A move to the future un-flags a truck that was only late for the old date.
+        overdue: false,
+      },
+      include: { truck: true },
+    });
+
+    return {
+      booking: updated,
+      from: { start: dateToIso(booking.blockStart), end: dateToIso(booking.blockEnd) },
+      to: { start: blockStart, end: blockEnd },
+    };
+    // The default interactive-transaction timeout is five seconds, which a
+    // slow connection blows through while holding the truck row lock.
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 });
 }

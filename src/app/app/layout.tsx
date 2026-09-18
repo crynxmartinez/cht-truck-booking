@@ -5,10 +5,13 @@ import './crm.css';
 export const dynamic = 'force-dynamic';
 
 export default async function CrmLayout({ children }: { children: React.ReactNode }) {
-  const [active, needsAttention] = await Promise.all([
+  const [active, needsAttention, pendingSigs] = await Promise.all([
     prisma.booking.count({ where: { stage: { notIn: ['COMPLETED', 'CANCELLED'] } } }),
     prisma.booking.count({
       where: { OR: [{ overdue: true }, { needsReview: true }, { rescheduleAsked: true }] },
+    }),
+    prisma.contract.count({
+      where: { status: 'SIGNED', counterSignedAt: null, booking: { stage: { notIn: ['CANCELLED'] } } },
     }),
   ]);
 
@@ -36,6 +39,9 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
         <Link href="/app/blackouts">Blackout dates</Link>
 
         <div className="nav-group">System</div>
+        <Link href="/app/notifications">
+          Notifications{pendingSigs ? <span className="count">{pendingSigs}</span> : null}
+        </Link>
         <Link href="/app/storage">Storage</Link>
         <Link href="/app/settings">Settings</Link>
 

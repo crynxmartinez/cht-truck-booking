@@ -45,26 +45,31 @@ async function main() {
     console.log(`Truck ${row.code} — ${row.plate} (${row.year})`);
   }
 
-  const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-  const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || '';
+  // The notification list. Seeded from config so day one matches what the
+  // system was already configured to do; everything after is managed in the UI.
+  const staffEmail = (process.env.STAFF_EMAIL || 'diana@coryhometeam.com').trim().toLowerCase();
+  const staffName = process.env.STAFF_NAME || 'Diana Alsup';
+  const staffPhone = process.env.STAFF_PHONE || '+15625568184';
 
-  if (!adminEmail || !adminPassword) {
-    console.log('No ADMIN_EMAIL / ADMIN_INITIAL_PASSWORD set — skipping admin creation.');
+  const existing = await prisma.notificationRecipient.findUnique({ where: { email: staffEmail } });
+  if (existing) {
+    console.log(`Notification recipient ${staffEmail} already exists (${existing.role}).`);
   } else {
-    const existing = await prisma.adminUser.findUnique({ where: { email: adminEmail } });
-    if (existing) {
-      console.log(`Admin ${adminEmail} already exists — password left alone.`);
-    } else {
-      await prisma.adminUser.create({
-        data: {
-          email: adminEmail,
-          passwordHash: await bcrypt.hash(adminPassword, 10),
-          name: 'Cory Home Team',
-          role: 'admin',
-        },
-      });
-      console.log(`Admin created: ${adminEmail}`);
-      console.log('Change this password after your first sign-in.');
+    const anyMain = await prisma.notificationRecipient.findFirst({ where: { role: 'MAIN_ADMIN' } });
+    const r = await prisma.notificationRecipient.create({
+      data: {
+        name: staffName,
+        email: staffEmail,
+        phone: staffPhone,
+        role: anyMain ? 'ADMIN' : 'MAIN_ADMIN',
+        notifyEmail: true,
+        notifySms: true,
+        active: true,
+      },
+    });
+    console.log(`Notification recipient created: ${r.name} <${r.email}> as ${r.role}`);
+    if (r.role === 'MAIN_ADMIN') {
+      console.log('They are the main admin and sign the paperwork — add their signature in the CRM under Notifications.');
     }
   }
 }

@@ -202,9 +202,11 @@ async function handleSign(req: Request, token: string) {
         where: { bookingId: b.id, status: { in: ['SENT', 'VIEWED'] } },
       });
       if (outstanding === 0) {
-        await setStage(b.id, Stage.CONFIRMED, 'system', 'All agreements signed');
-        await notify(b.id, 'rental_confirmed');
-        await notifyStaff(b.id, 'confirmed');
+        // The renter is done, but the booking is not confirmed until the main
+        // admin counter-signs. People book well in advance, so the wait costs
+        // nothing and nobody is told the truck is theirs before a human agrees.
+        await setStage(b.id, Stage.AWAITING_APPROVAL, 'system', 'Renter signed — waiting on main admin');
+        await notifyStaff(b.id, 'awaiting_approval');
       }
     }
   } catch (err) {

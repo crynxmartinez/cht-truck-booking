@@ -51,6 +51,7 @@ enum Stage {
   NEW_BOOKING
   CONTRACT_SENT
   ADDITIONAL_DRIVER
+  AWAITING_APPROVAL
   CONFIRMED
   PICKUP_DAY
   IN_USE
@@ -257,6 +258,12 @@ model Contract {
   viewedAt DateTime?
   signedAt DateTime?
 
+  /** Main-admin approval. The renter signing is not the end of it. */
+  counterSignedAt      DateTime?
+  counterSignedById    String?
+  counterSignerName    String?
+  counterSignatureData String?   @db.Text
+
   pdfUrl String?
   // Blobs are private, so the pathname is the handle we actually fetch by.
   // The renter reaches their copy through /api/files/contract/<token>.
@@ -302,6 +309,17 @@ model Checklist {
   openedAt    DateTime?
   submittedAt DateTime?
 
+  /**
+   * Dispatch / receive sign-off — the two rows the paper form always had.
+   * The report PDF carries the renter's checklist and the admin's signature.
+   */
+  counterSignedAt      DateTime?
+  counterSignedById    String?
+  counterSignerName    String?
+  counterSignatureData String?   @db.Text
+  reportPdfUrl         String?
+  reportPdfPathname    String?
+
   completionSource ChecklistCompletionSource?
   completedBy      String?
   overrideReason   String?                   @db.Text
@@ -341,6 +359,16 @@ model MessageLog {
   subject   String?
   body      String? @db.Text
 
+  /**
+   * Who this copy was for. "renter" for customer messages, otherwise the
+   * recipient id. A plain nullable FK would break the unique index, because
+   * Postgres treats NULLs as distinct and every customer message would stop
+   * being deduplicated.
+   */
+  recipientKey String @default("renter")
+  recipientId  String?
+  recipient    NotificationRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+
   providerId String?
   // The GHL contact the message was actually delivered to. toAddress records
   // who we meant; this records who the provider used. They diverged once and
@@ -353,7 +381,7 @@ model MessageLog {
 
   // The idempotency key. One row per booking per template per channel means a
   // retried cron can never text somebody twice at 6 AM.
-  @@unique([bookingId, template, channel])
+  @@unique([bookingId, template, channel, recipientKey])
   @@index([bookingId])
   @@map("message_logs")
 }
@@ -376,16 +404,47 @@ model BookingEvent {
 
 // ---------------------------------------------------------------- admin
 
-model AdminUser {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String?
-  role         String   @default("admin")
-  lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
+enum RecipientRole {
+  /** Signs the paperwork. Exactly one at a time. */
+  MAIN_ADMIN
+  /** Notified only. */
+  ADMIN
+}
 
-  @@map("admin_users")
+/**
+ * Who the office notifies, and who signs.
+ *
+ * Replaces the single STAFF_EMAIL/STAFF_PHONE pair so people can be added and
+ * swapped without a redeploy. Every active row receives every staff alert;
+ * only the MAIN_ADMIN counter-signs.
+ */
+model NotificationRecipient {
+  id    String @id @default(cuid())
+  name  String
+  email String @unique
+  phone String
+
+  role        RecipientRole @default(ADMIN)
+  notifyEmail Boolean       @default(true)
+  notifySms   Boolean       @default(true)
+  active      Boolean       @default(true)
+
+  /** Resolved by lookup, never by upsert, so we cannot rename their contact. */
+  ghlContactId String?
+
+  /**
+   * Drawn once when somebody is made main admin, then stamped on each
+   * approval. Re-drawing three times per rental would simply get skipped.
+   */
+  signatureData String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages MessageLog[]
+
+  @@index([active])
+  @@map("notification_recipients")
 }
 
 // A tiny key/value table so settings the office changes (lockbox codes,

@@ -4,7 +4,10 @@ import { useEffect, useState, useTransition } from 'react';
 import type { Stage } from '@prisma/client';
 import { STAGE_META, STAGE_LABEL } from '@/lib/stages';
 import type { ActionResult } from './actions';
-import { addNote, cancel, clearFlags, moveStage, reopen, resend, switchTruck } from './actions';
+import {
+  addNote, approveChecklistAction, approveContractAction, cancel, changeDates,
+  clearFlags, moveStage, reopen, resend, switchTruck,
+} from './actions';
 import type { BookingDetail, TruckOption } from './types';
 import { StaffDropoffUpload } from './StaffDropoffUpload';
 
@@ -28,6 +31,7 @@ export function BookingModal({
   const c = detail.card;
   const [flash, setFlash] = useState<ActionResult | null>(null);
   const [note, setNote] = useState('');
+  const [dates, setDates] = useState<{ start: string; days: number } | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -127,6 +131,57 @@ export function BookingModal({
             ))}
           </div>
 
+          <div className="sect">Dates</div>
+          {dates ? (
+            <div className="note info">
+              <div className="row two" style={{ marginBottom: 10 }}>
+                <div>
+                  <label htmlFor="nd">New pickup date</label>
+                  <input id="nd" type="date" value={dates.start} onChange={(e) => setDates({ ...dates, start: e.target.value })} />
+                </div>
+                <div>
+                  <label htmlFor="nl">Length (days)</label>
+                  <input
+                    id="nl"
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={dates.days}
+                    onChange={(e) => setDates({ ...dates, days: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <div className="tiny" style={{ marginBottom: 10 }}>
+                The renter is emailed and texted about the new dates automatically.
+              </div>
+              <button className="btn ghost small" onClick={() => setDates(null)} disabled={pending}>
+                Cancel
+              </button>{' '}
+              <button
+                className="btn primary small"
+                disabled={pending || !dates.start}
+                onClick={() => {
+                  const reason = window.prompt('Why is it moving? (shown in the activity log)') ?? '';
+                  run(async () => {
+                    const r = await changeDates(c.id, dates.start, dates.days, reason);
+                    if (r.ok) setDates(null);
+                    return r;
+                  });
+                }}
+              >
+                Move booking
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn ghost small"
+              disabled={pending}
+              onClick={() => setDates({ start: detail.pickupIso, days: detail.rentalDays })}
+            >
+              Change dates
+            </button>
+          )}
+
           {trucks.length > 1 ? (
             <>
               <div className="sect">Swap truck</div>
@@ -156,6 +211,7 @@ export function BookingModal({
                     <th>Document</th>
                     <th>Status</th>
                     <th>Signed</th>
+                    <th>Approved</th>
                     <th />
                   </tr>
                 </thead>
@@ -165,6 +221,21 @@ export function BookingModal({
                       <td>{k.type === 'RENTAL_AGREEMENT' ? 'Rental agreement' : 'Additional driver'}</td>
                       <td>{k.status.toLowerCase()}</td>
                       <td>{k.signedLabel}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {k.counterSignedLabel ? (
+                          <span className="tiny">{k.counterSignedLabel}</span>
+                        ) : k.status === 'SIGNED' ? (
+                          <button
+                            className="btn primary small"
+                            disabled={pending}
+                            onClick={() => run(() => approveContractAction(k.id))}
+                          >
+                            Sign &amp; approve
+                          </button>
+                        ) : (
+                          <span className="tiny">—</span>
+                        )}
+                      </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {k.pdfUrl ? (
                           <a href={k.pdfUrl} target="_blank" rel="noreferrer">
@@ -194,6 +265,7 @@ export function BookingModal({
                     <th>Phase</th>
                     <th>Submitted</th>
                     <th>Time</th>
+                    <th>Signed off</th>
                     <th />
                   </tr>
                 </thead>
@@ -210,6 +282,21 @@ export function BookingModal({
                         ) : null}
                       </td>
                       <td>{k.reportedTime ?? '—'}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {k.counterSignedLabel ? (
+                          <span className="tiny">{k.counterSignedLabel}</span>
+                        ) : k.submittedLabel !== '—' && !k.submittedLabel.startsWith('opened') ? (
+                          <button
+                            className="btn primary small"
+                            disabled={pending}
+                            onClick={() => run(() => approveChecklistAction(k.id))}
+                          >
+                            Sign off
+                          </button>
+                        ) : (
+                          <span className="tiny">—</span>
+                        )}
+                      </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <a href={k.link} target="_blank" rel="noreferrer">
                           Open link

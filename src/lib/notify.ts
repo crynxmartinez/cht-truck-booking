@@ -125,9 +125,14 @@ async function dispatch(opts: {
   recipient: Recipient;
   body: Body;
   force?: boolean;
+  /** "renter" for customer messages, otherwise the recipient id. */
+  recipientKey?: string;
+  recipientId?: string | null;
   resolveContact: () => Promise<{ contactId: string } | { error: string }>;
 }): Promise<{ sent: MessageChannel[]; skipped: MessageChannel[]; errors: string[] }> {
   const { bookingId, template, channels, recipient, body, force } = opts;
+  const recipientKey = opts.recipientKey ?? 'renter';
+  const recipientId = opts.recipientId ?? null;
   const sent: MessageChannel[] = [];
   const skipped: MessageChannel[] = [];
   const errors: string[] = [];
@@ -145,7 +150,7 @@ async function dispatch(opts: {
     let logId: string;
     try {
       const log = await prisma.messageLog.create({
-        data: { bookingId, template, channel, status: MessageStatus.QUEUED, ...payload },
+        data: { bookingId, template, channel, recipientKey, recipientId, status: MessageStatus.QUEUED, ...payload },
       });
       logId = log.id;
     } catch {
@@ -154,7 +159,7 @@ async function dispatch(opts: {
         continue;
       }
       const existing = await prisma.messageLog.findUnique({
-        where: { bookingId_template_channel: { bookingId, template, channel } },
+        where: { bookingId_template_channel_recipientKey: { bookingId, template, channel, recipientKey } },
       });
       if (!existing) {
         skipped.push(channel);
@@ -246,92 +251,82 @@ export async function notify(
 
 // ---------------------------------------------------------------- staff
 
-const STAFF_CONTACT_KEY = 'ghl.staff.contactId';
-
 /**
- * Diana's GHL contact id, cached in Settings so five alerts per rental do not
- * mean five upserts.
+ * Resolve a recipient's GHL contact, caching the id on their row.
  *
- * The cache stores the email and phone it was resolved FOR, and is discarded
- * when either no longer matches config. Without that, a cache written against
- * one recipient keeps being used after STAFF_EMAIL changes — which is exactly
- * what happened here: an id resolved during local testing sat in the shared
- * Settings row for ten days, and every alert went to the test contact while
- * the message log recorded Diana's address.
+ * Looks up by email and only creates when nobody matches — an upsert would
+ * overwrite whatever the office named the contact, which is how "Diana For
+ * Truck automation" once silently became "Diana Alsup".
  */
-async function staffContactId(): Promise<{ contactId: string } | { error: string }> {
-  const want = { email: config.staff.email, phone: config.staff.phone };
+async function recipientContactId(r: {
+  id: string; name: string; email: string; phone: string; ghlContactId: string | null;
+}): Promise<{ contactId: string } | { error: string }> {
+  if (r.ghlContactId) return { contactId: r.ghlContactId };
 
-  const cached = await prisma.setting.findUnique({ where: { key: STAFF_CONTACT_KEY } });
-  if (cached?.value) {
-    try {
-      const v = JSON.parse(cached.value);
-      if (v.contactId && v.email === want.email && v.phone === want.phone) {
-        return { contactId: v.contactId as string };
-      }
-      console.warn('[staff] cached contact was resolved for a different recipient — re-resolving');
-    } catch {
-      // A bare id from an older build, with no record of who it was for.
-      console.warn('[staff] cached contact has no recipient recorded — re-resolving');
-    }
-  }
-
-  // Look first. The office curates this contact by hand — an upsert would
-  // overwrite whatever they named it, which is how "diana truck automation"
-  // silently became "diana alsup".
-  const found = await findContactByEmail(want.email);
+  const found = await findContactByEmail(r.email);
   let contactId: string | null = found.ok ? found.data.contactId : null;
 
   if (!contactId) {
-    const [firstName, ...rest] = config.staff.name.split(' ');
+    const [firstName, ...rest] = r.name.split(' ');
     const res = await upsertContact({
       firstName: firstName || 'Office',
       lastName: rest.join(' '),
-      email: want.email,
-      phone: want.phone,
+      email: r.email,
+      phone: r.phone,
       tags: ['truck-ops-staff'],
     });
     if (!res.ok) return { error: res.error };
     contactId = res.data.contactId;
   }
 
-  const value = JSON.stringify({ ...want, contactId });
-  await prisma.setting
-    .upsert({
-      where: { key: STAFF_CONTACT_KEY },
-      create: { key: STAFF_CONTACT_KEY, value },
-      update: { value },
-    })
+  await prisma.notificationRecipient
+    .update({ where: { id: r.id }, data: { ghlContactId: contactId } })
     .catch(() => undefined);
 
   return { contactId };
 }
 
+/** Everyone currently on the notification list. */
+export async function activeRecipients() {
+  return prisma.notificationRecipient.findMany({
+    where: { active: true },
+    orderBy: [{ role: 'asc' }, { name: 'asc' }],
+  });
+}
+
+/** The one person who signs. Null if nobody is set, which the CRM warns about. */
+export async function mainAdmin() {
+  return prisma.notificationRecipient.findFirst({
+    where: { role: 'MAIN_ADMIN', active: true },
+  });
+}
+
 /**
  * Tell the office a rental moved.
  *
- * Never throws and never blocks: an alert failing must not roll back the thing
- * it was reporting on. Failures land in MessageLog like any other send, so the
- * booking card shows them.
+ * Fans out to every active recipient, each with their own MessageLog rows, so
+ * one person's failure never suppresses another's copy. Never throws: an alert
+ * failing must not roll back the thing it was reporting on.
  */
 export async function notifyStaff(
   bookingId: string,
   event: StaffEvent,
   extra: Partial<StaffContext> = {},
 ): Promise<void> {
-  if (!config.staff.configured) return;
+  if (!config.staff.notifyEnabled) return;
 
   try {
+    const people = await activeRecipients();
+    if (!people.length) {
+      console.warn('[staff] nobody on the notification list — alert dropped:', event);
+      return;
+    }
+
     const b = await prisma.booking.findUnique({
       where: { id: bookingId },
       select: {
-        reference: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        pickupDate: true,
-        returnDate: true,
+        reference: true, firstName: true, lastName: true, email: true, phone: true,
+        pickupDate: true, returnDate: true,
         truck: { select: { code: true } },
         additionalDriver: { select: { name: true } },
       },
@@ -349,29 +344,32 @@ export async function notifyStaff(
       additionalDriverName: b.additionalDriver?.name ?? null,
       ...extra,
     };
+    const body = renderStaff(event, ctx);
 
-    // Routine progress can be email-only if the texts get noisy; anything that
-    // needs acting on today always texts, whatever that setting says.
-    const wantsSms = config.staff.smsEnabled || isUrgent(event);
-    const channels = wantsSms
-      ? [MessageChannel.EMAIL, MessageChannel.SMS]
-      : [MessageChannel.EMAIL];
+    for (const p of people) {
+      // Routine progress can be email-only per person; anything needing action
+      // today still texts, whatever that preference says.
+      const channels: MessageChannel[] = [];
+      if (p.notifyEmail) channels.push(MessageChannel.EMAIL);
+      if (p.notifySms || isUrgent(event)) channels.push(MessageChannel.SMS);
+      if (!channels.length) continue;
 
-    await dispatch({
-      bookingId,
-      // Namespaced so a staff alert can never collide with the customer
-      // template of the same name in the idempotency index.
-      template: `staff_${event}`,
-      channels,
-      recipient: {
-        firstName: config.staff.name.split(' ')[0] ?? 'Office',
-        lastName: config.staff.name.split(' ').slice(1).join(' '),
-        email: config.staff.email,
-        phone: config.staff.phone,
-      },
-      body: renderStaff(event, ctx),
-      resolveContact: staffContactId,
-    });
+      await dispatch({
+        bookingId,
+        template: `staff_${event}`,
+        channels,
+        recipientKey: p.id,
+        recipientId: p.id,
+        recipient: {
+          firstName: p.name.split(' ')[0] ?? 'Office',
+          lastName: p.name.split(' ').slice(1).join(' '),
+          email: p.email,
+          phone: p.phone,
+        },
+        body,
+        resolveContact: () => recipientContactId(p),
+      });
+    }
   } catch (err) {
     console.error('staff notify failed', event, err);
   }

@@ -38,6 +38,7 @@ export type ContractData = {
   id: string;
   type: string;
   status: string;
+  counterSignedLabel: string | null;
   signerName: string | null;
   signedLabel: string;
   pdfUrl: string | null;
@@ -45,7 +46,9 @@ export type ContractData = {
 };
 
 export type ChecklistData = {
+  id: string;
   phase: string;
+  counterSignedLabel: string | null;
   submitted: boolean;
   submittedLabel: string;
   reportedTime: string | null;
@@ -73,6 +76,8 @@ export type EventData = {
 
 export type BookingDetail = {
   card: CardData;
+  rentalDays: number;
+  pickupIso: string;
   reviewNote: string | null;
   additionalDriverName: string | null;
   additionalDriverContact: string | null;

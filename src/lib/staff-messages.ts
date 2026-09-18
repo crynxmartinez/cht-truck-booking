@@ -13,11 +13,13 @@ import { formatMedium } from './dates';
 export type StaffEvent =
   | 'booking_received'
   | 'additional_driver_invited'
+  | 'awaiting_approval'
   | 'confirmed'
   | 'picked_up'
   | 'returned'
   | 'reschedule_requested'
   | 'overdue'
+  | 'dates_changed'
   | 'cancelled';
 
 export type StaffContext = {
@@ -36,7 +38,7 @@ export type StaffContext = {
 export type StaffRendered = { subject: string; email: string; sms: string };
 
 /** Priority marker so a glanced text says whether it needs acting on. */
-const URGENT: StaffEvent[] = ['overdue', 'reschedule_requested'];
+const URGENT: StaffEvent[] = ['overdue', 'reschedule_requested', 'awaiting_approval'];
 
 export function isUrgent(event: StaffEvent): boolean {
   return URGENT.includes(event);
@@ -86,6 +88,20 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
         `2ND DRIVER · ${c.additionalDriverName ?? 'unnamed'} on ${who}'s ${pickup} rental. Agreement sent, waiting on signature.`,
       );
 
+
+    case 'awaiting_approval':
+      return wrap(
+        `Needs your signature — ${who}, ${truck}, ${pickup}`,
+        `${who} has signed for ${truck} on ${pickup}. It needs your counter-signature before they are confirmed — nothing has been sent to them yet.`,
+        `SIGN NEEDED · ${who} · ${truck} · ${pickup}. Not confirmed until you sign.`,
+      );
+
+    case 'dates_changed':
+      return wrap(
+        `Dates moved — ${who}, ${truck}`,
+        `${who}'s rental has been moved to ${pickup} - ${back}${c.detail ? ` (${c.detail})` : ''}. They have been told.`,
+        `DATES MOVED · ${who} · ${truck} · now ${pickup}. Renter notified.`,
+      );
 
     case 'confirmed':
       return wrap(

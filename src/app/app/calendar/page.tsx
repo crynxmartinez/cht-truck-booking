@@ -1,146 +1,138 @@
 import { prisma } from '@/lib/db';
-import { addDays, dateToIso, eachDay, formatMedium, todayInOps, overlaps } from '@/lib/dates';
 import { config } from '@/lib/config';
+import { dateToIso, todayInOps } from '@/lib/dates';
+import { layout, monthWeeks, type CalItem } from '@/lib/calendar-layout';
+import { MonthCalendar } from './MonthCalendar';
+import type { BookingDetail, TruckOption } from '../types';
+import { loadBookingDetail } from '../detail';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Six weeks of fleet at a glance — which truck is out, when, and to whom.
- * Answers "can I take Truck A in for service next Tuesday" without opening
- * a single booking.
- */
-export default async function CalendarPage() {
-  const today = todayInOps();
-  const from = today;
-  const to = addDays(today, 41);
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
-  const [trucks, bookings, blackouts] = await Promise.all([
-    prisma.truck.findMany({ orderBy: { code: 'asc' } }),
+async function loadDetail(id: string): Promise<BookingDetail | null> {
+  'use server';
+  return loadBookingDetail(id);
+}
+
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ m?: string; truck?: string }>;
+}) {
+  const sp = await searchParams;
+  const today = todayInOps();
+
+  // ?m=YYYY-MM keeps navigation a plain link — no client state to desync.
+  const m = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : today.slice(0, 7);
+  const [year, month1] = m.split('-').map(Number);
+  const monthIndex = Math.min(11, Math.max(0, month1 - 1));
+  const filter = sp.truck === 'A' || sp.truck === 'B' ? sp.truck : null;
+
+  const weeks = monthWeeks(year, monthIndex);
+  const from = weeks[0].days[0];
+  const to = weeks[weeks.length - 1].days[6];
+
+  const [bookings, blackouts, trucks] = await Promise.all([
     prisma.booking.findMany({
       where: {
         stage: { notIn: ['CANCELLED'] },
         blockStart: { lte: new Date(`${to}T00:00:00Z`) },
         blockEnd: { gte: new Date(`${from}T00:00:00Z`) },
       },
-      include: { truck: { select: { code: true } } },
+      include: { truck: { select: { code: true } }, contracts: { select: { status: true, counterSignedAt: true } } },
     }),
     prisma.blackoutDate.findMany({
       where: {
         startDate: { lte: new Date(`${to}T00:00:00Z`) },
         endDate: { gte: new Date(`${from}T00:00:00Z`) },
       },
+      include: { truck: { select: { code: true } } },
     }),
+    prisma.truck.findMany({ where: { active: true }, select: { id: true, code: true }, orderBy: { code: 'asc' } }),
   ]);
 
-  const days = eachDay(from, to);
+  const items: CalItem[] = [
+    ...bookings
+      .filter((b) => !filter || b.truck?.code === filter)
+      .map<CalItem>((b) => ({
+        id: b.id,
+        kind: 'booking',
+        truck: (b.truck?.code as 'A' | 'B') ?? null,
+        label: `${b.firstName} ${b.lastName}`.trim(),
+        sublabel: b.reference,
+        start: dateToIso(b.blockStart),
+        end: dateToIso(b.blockEnd),
+        unsigned: b.contracts.some((c) => c.status === 'SIGNED' && !c.counterSignedAt),
+      })),
+    ...blackouts
+      .filter((x) => !filter || x.truck.code === filter)
+      .map<CalItem>((x) => ({
+        id: x.id,
+        kind: 'blackout',
+        truck: x.truck.code as 'A' | 'B',
+        label: `Truck ${x.truck.code} blocked`,
+        sublabel: x.reason,
+        start: dateToIso(x.startDate),
+        end: dateToIso(x.endDate),
+      })),
+  ];
 
-  type Cell = { label: string; kind: 'free' | 'booked' | 'blackout'; title: string };
+  layout(weeks, items);
 
-  const grid = trucks.map((t) => {
-    const cells: Cell[] = days.map((d) => {
-      const bk = bookings.find(
-        (b) => b.truckId === t.id && overlaps(d, d, dateToIso(b.blockStart), dateToIso(b.blockEnd)),
-      );
-      if (bk) {
-        return {
-          label: `${bk.firstName[0] ?? ''}${bk.lastName[0] ?? ''}`,
-          kind: 'booked',
-          title: `${bk.firstName} ${bk.lastName} · ${bk.reference} · ${formatMedium(dateToIso(bk.pickupDate))} → ${formatMedium(dateToIso(bk.returnDate))}`,
-        };
-      }
-      const bo = blackouts.find(
-        (b) => b.truckId === t.id && overlaps(d, d, dateToIso(b.startDate), dateToIso(b.endDate)),
-      );
-      if (bo) return { label: '×', kind: 'blackout', title: bo.reason };
-      return { label: '', kind: 'free', title: `Truck ${t.code} free on ${formatMedium(d)}` };
-    });
-    return { truck: t, cells };
-  });
-
-  const colour = (k: Cell['kind']) =>
-    k === 'booked' ? 'var(--red)' : k === 'blackout' ? '#6b6e73' : 'var(--ok-wash)';
+  const prev = new Date(Date.UTC(year, monthIndex - 1, 1));
+  const next = new Date(Date.UTC(year, monthIndex + 1, 1));
+  const href = (d: Date) =>
+    `/app/calendar?m=${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}` +
+    (filter ? `&truck=${filter}` : '');
 
   return (
     <>
       <div className="topbar">
         <h1>Calendar</h1>
         <div className="spacer" />
-        <div className="tiny">Next six weeks &middot; {config.timeZone.replace('_', ' ')}</div>
+        <div className="tiny">{config.timeZone.replace('_', ' ')}</div>
       </div>
 
       <div className="content">
-        <div className="panel">
-          <h2>Fleet availability</h2>
-          <div className="hint">
-            A booking blocks its truck for {config.rentalBlockDays} days from pickup. Hover a cell for who has it.
-          </div>
-
-          <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
-            <div style={{ minWidth: days.length * 24 + 90 }}>
-              <div style={{ display: 'flex', gap: 2, marginLeft: 90, marginBottom: 4 }}>
-                {days.map((d) => (
-                  <div
-                    key={d}
-                    style={{
-                      width: 22,
-                      fontSize: 9,
-                      textAlign: 'center',
-                      color: d === today ? 'var(--red)' : 'var(--faint)',
-                      fontWeight: d === today ? 700 : 400,
-                    }}
-                  >
-                    {d.slice(8)}
-                  </div>
-                ))}
-              </div>
-
-              {grid.map((row) => (
-                <div key={row.truck.id} style={{ display: 'flex', gap: 2, alignItems: 'center', marginBottom: 4 }}>
-                  <div style={{ width: 86, fontSize: 12.5, fontWeight: 700 }}>
-                    Truck {row.truck.code}
-                    {!row.truck.active ? <span className="tag" style={{ marginLeft: 4 }}>off</span> : null}
-                  </div>
-                  {row.cells.map((c, i) => (
-                    <div
-                      key={i}
-                      title={c.title}
-                      style={{
-                        width: 22,
-                        height: 26,
-                        borderRadius: 4,
-                        background: colour(c.kind),
-                        color: c.kind === 'free' ? 'transparent' : '#fff',
-                        fontSize: 9,
-                        fontWeight: 700,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: '1px solid ' + (c.kind === 'free' ? '#cfe9dd' : 'transparent'),
-                      }}
-                    >
-                      {c.label}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 16, marginTop: 14, fontSize: 12, color: 'var(--mut)' }}>
-            <span>
-              <i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: 'var(--ok-wash)', border: '1px solid #cfe9dd', marginRight: 5 }} />
-              Free
-            </span>
-            <span>
-              <i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: 'var(--red)', marginRight: 5 }} />
-              Booked
-            </span>
-            <span>
-              <i style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: '#6b6e73', marginRight: 5 }} />
-              Blackout
-            </span>
-          </div>
-        </div>
+        <MonthCalendar
+          title={`${MONTHS[monthIndex]} ${year}`}
+          prevHref={href(prev)}
+          nextHref={href(next)}
+          todayHref={`/app/calendar${filter ? `?truck=${filter}` : ''}`}
+          filter={filter}
+          filterHrefs={{
+            all: `/app/calendar?m=${m}`,
+            a: `/app/calendar?m=${m}&truck=A`,
+            b: `/app/calendar?m=${m}&truck=B`,
+          }}
+          monthIndex={monthIndex}
+          today={today}
+          weeks={weeks.map((w) => ({
+            days: w.days,
+            lanes: w.lanes,
+            segments: w.segments.map((s) => ({
+              id: s.item.id,
+              kind: s.item.kind,
+              truck: s.item.truck,
+              label: s.item.label,
+              sublabel: s.item.sublabel ?? null,
+              start: s.item.start,
+              end: s.item.end,
+              unsigned: Boolean(s.item.unsigned),
+              col: s.col,
+              span: s.span,
+              lane: s.lane,
+              isStart: s.isStart,
+              isEnd: s.isEnd,
+            })),
+          }))}
+          trucks={trucks as TruckOption[]}
+          loadDetail={loadDetail}
+        />
       </div>
     </>
   );

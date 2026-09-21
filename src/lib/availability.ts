@@ -121,8 +121,16 @@ export async function createBookingWithTruck(input: {
   draftId?: string | null;
   sourceUrl?: string | null;
   preferTruckId?: string | null;
+  /**
+   * Length in days. The widget always takes the house default; the office needs
+   * to honour a genuine two-day booking at the point of taking it, rather than
+   * booking three and moving it afterwards.
+   */
+  days?: number;
+  /** Fail rather than silently substituting another truck. */
+  mustUseTruck?: boolean;
 }) {
-  const w = rentalWindow(input.pickupDate);
+  const w = rentalWindow(input.pickupDate, input.days ?? config.rentalBlockDays);
 
   return prisma.$transaction(
     async (tx) => {
@@ -167,7 +175,14 @@ export async function createBookingWithTruck(input: {
       if (free.length === 0) throw new NoTruckAvailableError();
 
       // Honour an explicit choice if it is still free, otherwise A before B.
-      const chosen = (input.preferTruckId && free.find((t) => t.id === input.preferTruckId)) || free[0];
+      const asked = input.preferTruckId ? free.find((t) => t.id === input.preferTruckId) : undefined;
+      if (input.preferTruckId && input.mustUseTruck && !asked) {
+        // The office picked that truck on purpose. Quietly handing them the
+        // other one is how somebody turns up expecting the big van.
+        const code = trucks.find((t) => t.id === input.preferTruckId)?.code ?? '?';
+        throw new NoTruckAvailableError(`Truck ${code} is not free for those dates.`);
+      }
+      const chosen = asked || free[0];
 
       return tx.booking.create({
         data: {
@@ -300,4 +315,56 @@ export async function rescheduleBooking(bookingId: string, newPickup: IsoDate, d
     // The default interactive-transaction timeout is five seconds, which a
     // slow connection blows through while holding the truck row lock.
   }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 });
+}
+
+/**
+ * What is actually free for a window, and who is holding whatever is not.
+ *
+ * This is the read-only twin of the check inside `createBookingWithTruck`, used
+ * to tell the office what they are about to run into *before* they submit.
+ * It deliberately does not lock: it is a preview, and the transaction remains
+ * the only thing that decides.
+ */
+export async function freeTrucksFor(
+  pickup: IsoDate,
+  days: number,
+): Promise<{
+  free: Array<{ id: string; code: string }>;
+  taken: Array<{ code: string; reason: string }>;
+  window: { start: IsoDate; end: IsoDate };
+}> {
+  const w = rentalWindow(pickup, Math.max(1, Math.min(days, 30)));
+  const start = isoToDate(w.blockStart);
+  const end = isoToDate(w.blockEnd);
+
+  const [trucks, bookings, blackouts] = await Promise.all([
+    prisma.truck.findMany({ where: { active: true }, select: { id: true, code: true }, orderBy: { code: 'asc' } }),
+    prisma.booking.findMany({
+      where: {
+        stage: { in: HOLDING_STAGES },
+        truckId: { not: null },
+        blockStart: { lte: end },
+        blockEnd: { gte: start },
+      },
+      select: { truckId: true, reference: true, firstName: true, lastName: true },
+    }),
+    prisma.blackoutDate.findMany({
+      where: { startDate: { lte: end }, endDate: { gte: start } },
+      select: { truckId: true, reason: true },
+    }),
+  ]);
+
+  const why = new Map<string, string>();
+  for (const b of bookings) {
+    if (b.truckId && !why.has(b.truckId)) {
+      why.set(b.truckId, `${b.firstName} ${b.lastName}`.trim() + ` (${b.reference})`);
+    }
+  }
+  for (const b of blackouts) if (!why.has(b.truckId)) why.set(b.truckId, b.reason || 'blocked');
+
+  return {
+    free: trucks.filter((t) => !why.has(t.id)),
+    taken: trucks.filter((t) => why.has(t.id)).map((t) => ({ code: t.code, reason: why.get(t.id)! })),
+    window: { start: w.blockStart, end: w.blockEnd },
+  };
 }

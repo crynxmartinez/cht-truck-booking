@@ -1,12 +1,28 @@
-import { Stage } from '@prisma/client';
+import { ChecklistPhase, ContractType, Stage } from '@prisma/client';
 import { prisma } from './db';
 import { logEvent, notifyStaff, setStage } from './notify';
 import { markPurgeEligible } from './storage';
+import { newToken } from './tokens';
 
 /**
  * Booking lifecycle operations shared between the CRM and the cron jobs.
  * Route handlers may only export HTTP verbs, so these live here.
  */
+
+/**
+ * The rental agreement and both checklists, each with its own unguessable
+ * token. Shared by the widget and the office so the two can never drift into
+ * creating a booking that is missing one of its links.
+ */
+export async function createPaperwork(bookingId: string) {
+  await prisma.$transaction([
+    prisma.contract.create({
+      data: { bookingId, type: ContractType.RENTAL_AGREEMENT, token: newToken() },
+    }),
+    prisma.checklist.create({ data: { bookingId, phase: ChecklistPhase.PICKUP, token: newToken() } }),
+    prisma.checklist.create({ data: { bookingId, phase: ChecklistPhase.DROPOFF, token: newToken() } }),
+  ]);
+}
 
 /** Close a booking out: releases the truck and starts the retention clock. */
 export async function completeBooking(bookingId: string, actor = 'system') {

@@ -1,22 +1,28 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import type { Stage } from '@prisma/client';
 import { STAGE_META } from '@/lib/stages';
 import type { BookingDetail, CardData, TruckOption } from './types';
 import { BookingModal } from './BookingModal';
+import { NewBooking } from './NewBooking';
 
 export function Board({
   cards,
   trucks,
+  defaultDays,
   loadDetail,
 }: {
   cards: CardData[];
   trucks: TruckOption[];
+  defaultDays: number;
   loadDetail: (id: string) => Promise<BookingDetail | null>;
 }) {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<BookingDetail | null>(null);
+  const [adding, setAdding] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -52,6 +58,9 @@ export function Board({
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search bookings"
         />
+        <button className="btn primary small" onClick={() => setAdding(true)}>
+          New booking
+        </button>
       </div>
 
       <div className="content">
@@ -77,6 +86,17 @@ export function Board({
           })}
         </div>
       </div>
+
+      {adding ? (
+        <NewBooking
+          trucks={trucks}
+          defaultDays={defaultDays}
+          onClose={(created) => {
+            setAdding(false);
+            if (created) router.refresh();
+          }}
+        />
+      ) : null}
 
       {open ? <BookingModal detail={open} trucks={trucks} onClose={() => setOpen(null)} /> : null}
     </>

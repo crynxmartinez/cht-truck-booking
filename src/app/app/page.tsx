@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { config } from '@/lib/config';
 import { BOARD_STAGES } from '@/lib/stages';
 import { Board } from './Board';
 import type { BookingDetail } from './types';
@@ -23,5 +24,12 @@ export default async function BoardPage() {
     prisma.truck.findMany({ where: { active: true }, select: { id: true, code: true }, orderBy: { code: 'asc' } }),
   ]);
 
-  return <Board cards={bookings.map(toCard)} trucks={trucks} loadDetail={loadDetail} />;
+  return (
+    <Board
+      cards={bookings.map(toCard)}
+      trucks={trucks}
+      defaultDays={config.rentalBlockDays}
+      loadDetail={loadDetail}
+    />
+  );
 }

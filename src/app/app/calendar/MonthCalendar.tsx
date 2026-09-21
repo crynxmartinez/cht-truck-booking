@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { addBlackout, type ActionResult } from '../actions';
 import { BookingModal } from '../BookingModal';
+import { NewBooking } from '../NewBooking';
 import type { BookingDetail, TruckOption } from '../types';
 
 export type SegmentDTO = {
@@ -39,7 +41,7 @@ const pretty = (iso: string) =>
 
 export function MonthCalendar({
   title, prevHref, nextHref, todayHref, filter, filterHrefs,
-  monthIndex, today, weeks, trucks, loadDetail,
+  monthIndex, today, weeks, trucks, defaultDays, loadDetail,
 }: {
   title: string;
   prevHref: string;
@@ -51,11 +53,15 @@ export function MonthCalendar({
   today: string;
   weeks: WeekDTO[];
   trucks: TruckOption[];
+  defaultDays: number;
   loadDetail: (id: string) => Promise<BookingDetail | null>;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState<BookingDetail | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [chooseDay, setChooseDay] = useState<string | null>(null);
   const [blockDay, setBlockDay] = useState<string | null>(null);
+  const [bookDay, setBookDay] = useState<string | null>(null);
   const [flash, setFlash] = useState<ActionResult | null>(null);
   const [pending, start] = useTransition();
 
@@ -172,9 +178,9 @@ export function MonthCalendar({
                   {!busy.a || !busy.b ? (
                     <button
                       className="cal-add"
-                      title={`Block ${pretty(d)}`}
-                      aria-label={`Block ${pretty(d)}`}
-                      onClick={() => setBlockDay(d)}
+                      title={`Book or block ${pretty(d)}`}
+                      aria-label={`Book or block ${pretty(d)}`}
+                      onClick={() => setChooseDay(d)}
                     />
                   ) : null}
                 </div>
@@ -209,8 +215,35 @@ export function MonthCalendar({
         <span><i style={{ background: '#995a06' }} />Truck B</span>
         <span><i style={{ background: 'repeating-linear-gradient(45deg,#6b6e73 0 4px,#7d8085 4px 8px)' }} />Blocked</span>
         <span><i style={{ background: '#1f4fa3', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,.65)' }} />Awaiting your signature</span>
-        <span className="tiny">Dots show each truck &middot; click a free day to block it</span>
+        <span className="tiny">Dots show each truck &middot; click a free day to book or block it</span>
       </div>
+
+      {chooseDay ? (
+        <DayChoice
+          day={chooseDay}
+          onClose={() => setChooseDay(null)}
+          onBook={() => {
+            setBookDay(chooseDay);
+            setChooseDay(null);
+          }}
+          onBlock={() => {
+            setBlockDay(chooseDay);
+            setChooseDay(null);
+          }}
+        />
+      ) : null}
+
+      {bookDay ? (
+        <NewBooking
+          trucks={trucks}
+          defaultDate={bookDay}
+          defaultDays={defaultDays}
+          onClose={(created) => {
+            setBookDay(null);
+            if (created) router.refresh();
+          }}
+        />
+      ) : null}
 
       {blockDay ? (
         <BlockDay
@@ -286,6 +319,40 @@ function BlockDay({
           >
             {pending ? 'Blocking…' : 'Block it'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayChoice({
+  day, onClose, onBook, onBlock,
+}: {
+  day: string;
+  onClose: () => void;
+  onBook: () => void;
+  onBlock: () => void;
+}) {
+  return (
+    <div className="modal-bg" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 380 }}>
+        <div className="modal-hd">
+          <div>
+            <h2>{pretty(day)}</h2>
+            <div className="sub">What are you doing with this day?</div>
+          </div>
+          <button className="x" onClick={onClose} aria-label="Close">&times;</button>
+        </div>
+        <div className="modal-bd">
+          <button className="btn primary" style={{ width: '100%', marginBottom: 10 }} onClick={onBook}>
+            Book a rental
+          </button>
+          <button className="btn ghost" style={{ width: '100%' }} onClick={onBlock}>
+            Block the truck
+          </button>
+          <p className="tiny" style={{ marginTop: 12, marginBottom: 0 }}>
+            Blocking takes a truck off the booking calendar for service, repair or personal use.
+          </p>
         </div>
       </div>
     </div>

@@ -1,10 +1,11 @@
 import { after } from 'next/server';
-import { ChecklistPhase, ContractType, Stage } from '@prisma/client';
+import { Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { createBookingWithTruck, NoTruckAvailableError } from '@/lib/availability';
+import { createPaperwork } from '@/lib/bookings';
 import { earliestBookable, isIsoDate, latestBookable, rentalWindow } from '@/lib/dates';
 import { cleanString, clientIp, isEmail, json, preflight, rateLimit, toE164 } from '@/lib/http';
-import { newReference, newToken } from '@/lib/tokens';
+import { newReference } from '@/lib/tokens';
 import { adoptDraftDocuments } from '@/lib/storage';
 import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 
@@ -110,21 +111,7 @@ export async function POST(req: Request) {
   try {
     await adoptDraftDocuments(draftId, booking.id);
 
-    await prisma.$transaction([
-      prisma.contract.create({
-        data: {
-          bookingId: booking.id,
-          type: ContractType.RENTAL_AGREEMENT,
-          token: newToken(),
-        },
-      }),
-      prisma.checklist.create({
-        data: { bookingId: booking.id, phase: ChecklistPhase.PICKUP, token: newToken() },
-      }),
-      prisma.checklist.create({
-        data: { bookingId: booking.id, phase: ChecklistPhase.DROPOFF, token: newToken() },
-      }),
-    ]);
+    await createPaperwork(booking.id);
 
     await logEvent(
       booking.id,

@@ -1,13 +1,15 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { config } from '@/lib/config';
 import { reassignTruck, NoTruckAvailableError } from '@/lib/availability';
 import { cancelBooking, completeBooking, reopenBooking } from '@/lib/bookings';
 import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import type { TemplateKey } from '@/lib/messages';
-import { isoToDate, isIsoDate } from '@/lib/dates';
+import { dateToIso, isoToDate, isIsoDate, todayInOps } from '@/lib/dates';
 import { isEmail, toE164 } from '@/lib/http';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -85,6 +87,144 @@ export async function addNote(bookingId: string, note: string): Promise<ActionRe
   if (!text) return { ok: false, error: 'Write something first.' };
   await logEvent(bookingId, 'note', text, who);
   return done('Note added.');
+}
+
+// ---------------------------------------------------------------- new booking
+
+export type NewBookingInput = {
+  fullName: string;
+  email: string;
+  phone: string;
+  pickupDate: string;
+  days: number;
+  /** '' means let the system pick A before B. */
+  truckId: string;
+  sendContract: boolean;
+  documentsLater: boolean;
+  note: string;
+};
+
+/** What the office is about to run into, shown live under the date field. */
+export async function checkAvailability(pickupDate: string, days: number) {
+  if (!isIsoDate(pickupDate)) return null;
+  const { freeTrucksFor } = await import('@/lib/availability');
+  return freeTrucksFor(pickupDate, Number.isFinite(days) ? days : config.rentalBlockDays);
+}
+
+/**
+ * Take a booking on somebody's behalf — the phone call the widget cannot handle.
+ *
+ * Deliberately looser than the public route in three places: no lead time (a
+ * walk-in for tomorrow is most of the point), no document requirement (nobody
+ * emails a licence mid-call), and a length the office chooses. The one rule it
+ * does not bend is the truck clash, which goes through exactly the same locked
+ * transaction as a widget booking.
+ */
+export async function createBooking(input: NewBookingInput): Promise<ActionResult> {
+  const who = await actor();
+
+  const name = input.fullName.trim().replace(/\s+/g, ' ');
+  const cut = name.indexOf(' ');
+  const firstName = cut === -1 ? name : name.slice(0, cut);
+  const lastName = cut === -1 ? '' : name.slice(cut + 1);
+  const email = input.email.trim().toLowerCase().slice(0, 254);
+  const phone = toE164(input.phone.trim());
+  const days = Number(input.days);
+
+  if (firstName.length < 2 || lastName.length < 1) {
+    return { ok: false, error: 'Enter a first and last name.' };
+  }
+  if (!isEmail(email)) return { ok: false, error: 'Enter a valid email address.' };
+  if (!phone) return { ok: false, error: 'Enter a 10-digit US mobile number.' };
+  if (!isIsoDate(input.pickupDate)) return { ok: false, error: 'Pick a valid pickup date.' };
+  if (!Number.isFinite(days) || days < 1 || days > 30) {
+    return { ok: false, error: 'Length must be 1 to 30 days.' };
+  }
+  // The office may book for today; it may not book for last week.
+  if (input.pickupDate < todayInOps()) {
+    return { ok: false, error: 'That date has already passed.' };
+  }
+
+  const { createBookingWithTruck, NoTruckAvailableError } = await import('@/lib/availability');
+  const { createPaperwork } = await import('@/lib/bookings');
+  const { newReference } = await import('@/lib/tokens');
+
+  let booking;
+  try {
+    booking = await createBookingWithTruck({
+      pickupDate: input.pickupDate,
+      reference: newReference(),
+      firstName,
+      lastName,
+      email,
+      phone,
+      days,
+      preferTruckId: input.truckId || null,
+      mustUseTruck: Boolean(input.truckId),
+      sourceUrl: 'crm',
+    });
+  } catch (err) {
+    if (err instanceof NoTruckAvailableError) {
+      // The default text is written for a customer who has just lost a race.
+      // The office is looking at the availability line and needs the plain fact.
+      const stale = err.message.startsWith('That date was taken');
+      return { ok: false, error: stale ? 'No truck is free for those dates.' : err.message };
+    }
+    console.error('createBooking failed', err);
+    return { ok: false, error: 'Could not create that booking.' };
+  }
+
+  const truckCode = booking.truck?.code ?? '?';
+  const window = `${dateToIso(booking.pickupDate)} → ${dateToIso(booking.returnDate)}`;
+
+  try {
+    await createPaperwork(booking.id);
+  } catch (err) {
+    console.error('paperwork setup failed', err);
+    return { ok: false, error: `Booking ${booking.reference} was created but its contract link was not. Open it and resend.` };
+  }
+
+  // No licence or insurance on a phone call. Flagging it puts the booking on
+  // Needs attention until they turn up, rather than it being quietly forgotten.
+  if (input.documentsLater) {
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        needsReview: true,
+        reviewNote: 'Licence and insurance not on file — booked by the office.',
+      },
+    });
+  }
+
+  await logEvent(
+    booking.id,
+    'booking_created',
+    `Taken by the office · ${window} · Truck ${truckCode}` + (input.note.trim() ? ` — ${input.note.trim()}` : ''),
+    who,
+  );
+
+  if (!input.sendContract) {
+    return done(`${booking.reference} created on Truck ${truckCode}. Nothing sent — use Resend when you are ready.`);
+  }
+
+  // The stage moves now so the board is honest the moment it reloads; the
+  // sends themselves run after the response, because four GoHighLevel calls is
+  // ten seconds nobody should sit through.
+  await setStage(booking.id, Stage.CONTRACT_SENT, who, 'Rental agreement sent');
+
+  const id = booking.id;
+  after(async () => {
+    try {
+      await notify(id, 'booking_received');
+      await notify(id, 'contract_to_sign');
+      await notifyStaff(id, 'booking_received');
+    } catch (err) {
+      console.error('notify failed', err);
+      await logEvent(id, 'notify_failed', String(err), 'system');
+    }
+  });
+
+  return done(`${booking.reference} created on Truck ${truckCode}. The contract link is on its way to ${firstName}.`);
 }
 
 // ---------------------------------------------------------------- fleet

@@ -131,6 +131,7 @@ export default async function CalendarPage({
             })),
           }))}
           trucks={trucks as TruckOption[]}
+          defaultDays={config.rentalBlockDays}
           loadDetail={loadDetail}
         />
       </div>

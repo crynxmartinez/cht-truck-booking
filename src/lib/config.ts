@@ -117,14 +117,17 @@ export const config = {
     email: str('STAFF_EMAIL', 'diana@coryhometeam.com'),
     phone: str('STAFF_PHONE', '+15625568184'),
     /**
-     * Where the office opens the board. Diana works inside GoHighLevel, where
-     * the CRM is embedded as a custom menu link, so alerts should land her
-     * there rather than on the bare Vercel domain.
+     * Where the office opens the board.
+     *
+     * This used to point at the GoHighLevel custom menu link, on the reasoning
+     * that Diana works inside GHL. That link is dead on a phone — GHL's mobile
+     * app does not render custom menu links at all — and alerts are mostly read
+     * on a phone, so it was the one link in the email guaranteed to fail where
+     * it mattered. The direct URL works in both places.
      */
-    boardUrl: str(
-      'STAFF_BOARD_URL',
-      'https://app.crushitmarketing.net/v2/location/G49ae08TwjSXTitzYXfP/custom-menu-link/be7f1327-f42b-429f-b33a-7a7ca75d26f7',
-    ),
+    get boardUrl() {
+      return str('STAFF_BOARD_URL', `${config.appUrl}/app`);
+    },
     notifyEnabled: bool('STAFF_NOTIFY_ENABLED', true),
     smsEnabled: bool('STAFF_SMS_ENABLED', true),
     get configured() {

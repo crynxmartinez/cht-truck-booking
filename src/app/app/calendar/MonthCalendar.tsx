@@ -76,6 +76,26 @@ export function MonthCalendar({
   const inMonth = (iso: string) => Number(iso.slice(5, 7)) - 1 === monthIndex;
   const isWeekend = (i: number) => i === 0 || i === 6;
 
+  /*
+   * The agenda starts at today when you are looking at the current month.
+   * Opening on the 1st means scrolling past three weeks of history to reach
+   * anything actionable, which on a phone is the whole screen's worth of work.
+   */
+  const agendaStart = weeks.some((w) => w.days.includes(today)) ? today : '';
+  const agendaDays = weeks.flatMap((w) =>
+    w.days
+      .filter((d) => inMonth(d) && d >= agendaStart)
+      .map((d) => {
+        const segs = w.segments.filter((s) => d >= s.start && d <= s.end);
+        const busy = { a: false, b: false };
+        for (const s of segs) {
+          if (s.truck === 'A') busy.a = true;
+          if (s.truck === 'B') busy.b = true;
+        }
+        return { day: d, segs, busy };
+      }),
+  );
+
   function renderBar(s: SegmentDTO, agenda = false) {
     const cls = [
       'cal-ev',
@@ -194,19 +214,36 @@ export function MonthCalendar({
         ))}
       </div>
 
-      {/* phones get an agenda; a 7-column grid is unreadable at that width */}
+      {/*
+        Phones get an agenda; a 7-column grid is unreadable at that width.
+        Every day in the month is listed, not only the busy ones — a free day
+        has to be on screen to be tappable, and "what is free" is most of what
+        anyone opens this for.
+      */}
       <div className="cal-agenda">
-        {weeks.flatMap((w) =>
-          w.days.filter((d) => inMonth(d)).map((d) => {
-            const segs = w.segments.filter((s) => d >= s.start && d <= s.end);
-            if (!segs.length) return null;
+        {agendaDays.length === 0 ? (
+          <p className="tiny">Nothing left this month.</p>
+        ) : (
+          agendaDays.map(({ day, segs, busy }) => {
+            const free = [!busy.a && 'A', !busy.b && 'B'].filter(Boolean) as string[];
             return (
-              <div className="agenda-day" key={d}>
-                <h4>{pretty(d)}</h4>
+              <div className={day === today ? 'agenda-day is-today' : 'agenda-day'} key={day}>
+                <h4>
+                  {pretty(day)}
+                  {day === today ? <span className="agenda-today">Today</span> : null}
+                </h4>
                 {segs.map((s) => renderBar(s, true))}
+                {free.length ? (
+                  <button className="agenda-free" onClick={() => setChooseDay(day)}>
+                    <span>
+                      {free.length === 2 ? 'Both trucks free' : `Truck ${free[0]} free`}
+                    </span>
+                    <span className="agenda-free-go">Book or block</span>
+                  </button>
+                ) : null}
               </div>
             );
-          }),
+          })
         )}
       </div>
 

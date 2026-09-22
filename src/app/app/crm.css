@@ -707,35 +707,178 @@
   overflow-x: auto;
 }
 
+/* The phone header and the drawer chrome only exist below 860px. */
+.nav-top,
+.nav-scrim,
+.nav-close,
+.nav-burger-dot {
+  display: none;
+}
+
 @media (max-width: 860px) {
+  /*
+   * Plain flow, not a grid. A sticky element's containing block is its grid
+   * area, so a sticky header left as a grid item can only travel inside its
+   * own row — it detaches and strands a blank screen behind it.
+   */
   .crm {
-    grid-template-columns: 1fr;
+    display: block;
+  }
+
+  /* --- phone header ------------------------------------------------------ */
+  .nav-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: #16181c;
+    color: #fff;
+    padding: 10px 14px;
+    /* Clears the notch when launched from the home screen. */
+    padding-top: calc(10px + env(safe-area-inset-top));
+  }
+  .nav-top-title {
+    font-size: 15px;
+    font-weight: 700;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .nav-top-brand {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    color: #9aa0a8;
+    font-weight: 700;
+  }
+  .nav-burger {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 44px;
+    height: 44px;
+    margin: -10px 0 -10px -10px;
+    padding: 0 10px;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .nav-burger span {
+    display: block;
+    height: 2px;
+    border-radius: 2px;
+    background: #e9eaec;
+  }
+  /* Anything needing attention is visible without opening the drawer. */
+  .nav-burger-dot {
+    display: block;
+    position: absolute;
+    top: 8px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 0 2px #16181c;
+  }
+
+  /* --- drawer ------------------------------------------------------------ */
+  .nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(10, 11, 13, 0.55);
   }
   .nav {
-    position: static;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 80;
+    width: min(290px, 84vw);
     height: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    padding-bottom: 8px;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease-out;
+    padding-top: env(safe-area-inset-top);
+  }
+  .nav.open {
+    transform: translateX(0);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nav {
+      transition: none;
+    }
   }
   .nav-brand {
-    border-bottom: 0;
-    padding: 14px 16px;
+    position: relative;
+    padding-right: 52px;
   }
-  .nav-group {
-    display: none;
+  .nav-close {
+    display: block;
+    position: absolute;
+    top: 12px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    background: none;
+    border: 0;
+    color: #9aa0a8;
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
   }
   .nav a {
-    padding: 7px 11px;
-    font-size: 13px;
+    padding: 12px 14px;
   }
-  .nav-foot {
-    border-top: 0;
-    margin-left: auto;
+
+  /* --- board becomes a list ---------------------------------------------- */
+  .board {
+    display: block;
+    overflow-x: visible;
   }
-  .nav-foot button {
+  .col {
     width: auto;
+    margin-bottom: 10px;
+    background: transparent;
+    padding: 0;
+    min-height: 0;
+  }
+  .col-hd {
+    padding: 6px 2px 8px;
+    position: sticky;
+    top: 56px;
+    z-index: 10;
+    background: var(--paper);
+  }
+  /* An empty stage is one line of text, not an empty box to scroll past. */
+  .col:has(.col-empty) .col-hd {
+    opacity: 0.5;
+    position: static;
+  }
+  .col-empty {
+    display: none;
+  }
+
+  .topbar {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  .topbar input[type='search'] {
+    width: 100%;
+    order: 3;
+  }
+  .topbar .btn {
+    order: 4;
+    width: 100%;
+  }
+  .content {
+    padding: 16px 16px 48px;
   }
 }
 
@@ -1051,5 +1194,42 @@
     margin: 0 0 5px;
     width: 100%;
     border-radius: 6px;
+  }
+  .agenda-day.is-today {
+    border-color: var(--red);
+    box-shadow: 0 0 0 1px var(--red);
+  }
+  .agenda-today {
+    margin-left: 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--red);
+  }
+  /* A free day has to be tappable — the desktop "+" lives in the month grid,
+     which is hidden at this width, so without this you cannot book from a
+     phone at all. */
+  .agenda-free {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px dashed var(--line-2);
+    border-radius: 7px;
+    background: var(--paper);
+    color: var(--mut);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  .agenda-free-go {
+    color: var(--red);
+    font-weight: 700;
+    white-space: nowrap;
   }
 }

@@ -10,7 +10,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#d6001c',
+  // Without cover, env(safe-area-inset-*) is always 0 and the header sits
+  // under the notch once it is launched from the home screen.
+  viewportFit: 'cover',
+  themeColor: '#16181c',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

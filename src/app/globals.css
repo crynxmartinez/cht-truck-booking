@@ -249,6 +249,27 @@ input[aria-invalid='true'] {
   background: var(--red-wash);
 }
 
+/*
+ * Safari zooms the page when you focus a field smaller than 16px, and then
+ * leaves you scrolled sideways. Every input in the app is 15px, so on a phone
+ * they all go up a notch rather than fighting it with user-scalable=no, which
+ * would take pinch-zoom away from everyone.
+ */
+@media (max-width: 860px) {
+  input[type='text'],
+  input[type='email'],
+  input[type='tel'],
+  input[type='password'],
+  input[type='date'],
+  input[type='time'],
+  input[type='number'],
+  input[type='search'],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 .err {
   color: var(--red);
   font-size: 12.5px;

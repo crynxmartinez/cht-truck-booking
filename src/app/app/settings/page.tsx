@@ -39,12 +39,16 @@ export default async function SettingsPage() {
     },
     {
       label: 'Office calendar',
-      ok: Boolean(gcal?.ok),
+      // Reading is not enough: a calendar shared as "See all event details"
+      // answers this check happily and then refuses every write.
+      ok: Boolean(gcal?.ok && (gcal.data.accessRole === 'writer' || gcal.data.accessRole === 'owner')),
       detail: !config.gcal.enabled
         ? 'Not connected. Set GOOGLE_CALENDAR_ID, GOOGLE_SA_EMAIL and GOOGLE_SA_PRIVATE_KEY — bookings will not appear on the shared Google calendar until you do.'
-        : gcal?.ok
-          ? `Writing to “${gcal.data.summary ?? config.gcal.calendarId}”. One event per rental day, 6 AM to 6 PM, colour-coded by truck.`
-          : `Configured but refused: ${gcal && !gcal.ok ? gcal.error : 'unknown error'}. Check the calendar is shared with ${config.gcal.clientEmail} as "Make changes to events".`,
+        : !gcal?.ok
+          ? `Configured but refused: ${gcal && !gcal.ok ? gcal.error : 'unknown error'}. Check the calendar is shared with ${config.gcal.clientEmail}.`
+          : gcal.data.accessRole === 'writer' || gcal.data.accessRole === 'owner'
+            ? `Writing to “${gcal.data.summary ?? config.gcal.calendarId}”. One event per rental day, 6 AM to 6 PM, colour-coded by truck.`
+            : `Can see “${gcal.data.summary ?? config.gcal.calendarId}” but cannot write to it (access: ${gcal.data.accessRole ?? 'unknown'}). Re-share it with ${config.gcal.clientEmail} as "Make changes to events".`,
     },
     {
       label: 'Staff alerts',

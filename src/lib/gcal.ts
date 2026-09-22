@@ -166,7 +166,17 @@ export async function deleteEvent(calendarId: string, eventId: string): Promise<
   return res;
 }
 
-/** Confirms the credentials work and the service account can see the calendar. */
-export async function ping(): Promise<GcalResult<{ summary?: string }>> {
-  return call<{ summary?: string }>('GET', `/calendars/${enc(config.gcal.calendarId)}`);
+/**
+ * Confirms the credentials work and the service account can write events.
+ *
+ * Deliberately an events call rather than reading the calendar resource:
+ * reading the calendar itself needs a broader scope than writing events does,
+ * and asking for a wider grant just to run a health check would be backwards.
+ * The listing carries the calendar's name and our access level anyway.
+ */
+export async function ping(): Promise<GcalResult<{ summary?: string; accessRole?: string }>> {
+  return call<{ summary?: string; accessRole?: string }>(
+    'GET',
+    `/calendars/${enc(config.gcal.calendarId)}/events?maxResults=1`,
+  );
 }

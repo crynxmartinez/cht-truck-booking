@@ -2,7 +2,7 @@ import { MessageChannel, MessageStatus, Stage } from '@prisma/client';
 import { prisma } from './db';
 import { config } from './config';
 import { dateToIso } from './dates';
-import { render, toHtml, type MessageContext, type TemplateKey } from './messages';
+import { render, toHtml, toPlain, type MessageContext, type TemplateKey } from './messages';
 import { isUrgent, renderStaff, type StaffContext, type StaffEvent } from './staff-messages';
 import { findContactByEmail, sendEmail, sendSms, upsertContact } from './ghl';
 
@@ -144,7 +144,7 @@ async function dispatch(opts: {
     const payload = {
       toAddress: channel === MessageChannel.EMAIL ? recipient.email : recipient.phone,
       subject: channel === MessageChannel.EMAIL ? body.subject : null,
-      body: channel === MessageChannel.EMAIL ? body.email : body.sms,
+      body: channel === MessageChannel.EMAIL ? toPlain(body.email) : body.sms,
     };
 
     let logId: string;
@@ -194,7 +194,7 @@ async function dispatch(opts: {
 
     const res =
       channel === MessageChannel.EMAIL
-        ? await sendEmail(contact.contactId, body.subject, { text: body.email, html: toHtml(body.email) })
+        ? await sendEmail(contact.contactId, body.subject, { text: toPlain(body.email), html: toHtml(body.email) })
         : await sendSms(contact.contactId, body.sms);
 
     if (res.ok) {

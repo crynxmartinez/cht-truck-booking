@@ -60,6 +60,9 @@ async function load(bookingId: string): Promise<BookingForCalendar | null> {
   });
 }
 
+const esc = (v: string) =>
+  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 /** Stages where the truck is spoken for but nobody has signed yet. */
 const UNCONFIRMED = new Set(['NEW_BOOKING', 'CONTRACT_SENT', 'ADDITIONAL_DRIVER', 'AWAITING_APPROVAL']);
 
@@ -72,17 +75,21 @@ function describe(b: BookingForCalendar): { summary: string; description: string
   // needs to survive that.
   const summary = `Truck ${truck} · ${name}${held ? ' (unconfirmed)' : ''}`;
 
+  // Google Calendar renders a small subset of HTML in the description, so the
+  // CRM link can be a word rather than a naked URL — worth it, because a
+  // tokenised link wraps across three lines on a phone and reads as noise.
+  const crm = `${config.appUrl}/app?ref=${encodeURIComponent(b.reference)}`;
   const description = [
-    `Truck ${truck} — ${name}`,
+    `<b>Truck ${truck} — ${esc(name)}</b>`,
     `${formatMedium(dateToIso(b.blockStart))} to ${formatMedium(dateToIso(b.blockEnd))}`,
     '',
-    `Phone: ${b.phone}`,
-    `Email: ${b.email}`,
-    `Reference: ${b.reference}`,
+    `Phone: <a href="tel:${esc(b.phone)}">${esc(b.phone)}</a>`,
+    `Email: <a href="mailto:${esc(b.email)}">${esc(b.email)}</a>`,
+    `Reference: ${esc(b.reference)}`,
     held ? 'Status: held, not yet confirmed' : 'Status: confirmed',
     '',
-    `Open in the CRM: ${config.appUrl}/app?ref=${encodeURIComponent(b.reference)}`,
-  ].join('\n');
+    `<a href="${esc(crm)}">Open this booking in the CRM</a>`,
+  ].join('<br>');
 
   return { summary, description };
 }

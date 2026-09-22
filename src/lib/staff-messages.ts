@@ -74,9 +74,10 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
     `Due back: ${back}`,
     `Ref:      ${c.reference}`,
     ``,
-    `Open the board:`,
-    board,
-    ...(config.gcal.enabled ? [``, `See it on the truck calendar:`, calendarDayLink(c.pickupDate)] : []),
+    // Buttons in the HTML copy, "Label: url" in the plain-text one. A raw
+    // link wraps across three lines on a phone and reads as noise.
+    `[[Open the board|${board}]]`,
+    ...(config.gcal.enabled ? [`[[See it on the calendar|${calendarDayLink(c.pickupDate)}]]`] : []),
   ].join('\n');
 
   const wrap = (subject: string, headline: string, sms: string): StaffRendered => ({

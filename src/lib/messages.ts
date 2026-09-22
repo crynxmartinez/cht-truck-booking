@@ -294,14 +294,40 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
 }
 
 /** Plain-text email rendered as simple HTML so it looks intentional in a client. */
+/**
+ * `[[Label|https://...]]` — a call to action.
+ *
+ * Renders as a button in the HTML email and collapses to "Label: url" in the
+ * plain-text copy, so a naked tokenised link never has to be the thing someone
+ * taps. Kept as a marker inside the template text rather than a separate field
+ * so the copy still reads top to bottom in one place.
+ */
+const BUTTON = /\[\[([^|\]]+)\|(https?:\/\/[^\]]+)\]\]/g;
+
+/** The text/plain alternative. Buttons become "Label: url". */
+export function toPlain(text: string): string {
+  return text.replace(BUTTON, (_m, label, url) => `${label}: ${url}`);
+}
+
 export function toHtml(text: string): string {
   const esc = (s: string) =>
     s.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch] as string);
 
-  const linked = esc(text).replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" style="color:#D6001C;font-weight:600">$1</a>',
-  );
+  // Buttons are pulled out before the plain URLs are linkified, otherwise the
+  // linkifier would chew through the href of the anchor we just built.
+  const buttons: string[] = [];
+  const withSlots = esc(text).replace(BUTTON, (_m, label, url) => {
+    buttons.push(
+      `<a href="${url}" style="display:inline-block;background:#D6001C;color:#fff;` +
+        `text-decoration:none;font-weight:700;font-size:15px;padding:12px 22px;` +
+        `border-radius:9px;margin:6px 0">${label}</a>`,
+    );
+    return `@@BTN${buttons.length - 1}@@`;
+  });
+
+  const linked = withSlots
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#D6001C;font-weight:600">$1</a>')
+    .replace(/@@BTN(\d+)@@/g, (_m, i) => buttons[Number(i)]);
 
   return [
     '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;',

@@ -1,6 +1,7 @@
 import { Stage } from '@prisma/client';
 import { prisma } from './db';
 import { logEvent, mainAdmin, notify, notifyStaff, setStage } from './notify';
+import { syncBookingToCalendar } from './calendar-sync';
 
 /**
  * Main-admin counter-signature.
@@ -79,6 +80,8 @@ export async function approveContract(contractId: string) {
     await setStage(contract.booking.id, Stage.CONFIRMED, admin.email, 'Approved by the main admin');
     await notify(contract.booking.id, 'rental_confirmed');
     await notifyStaff(contract.booking.id, 'confirmed');
+    // Drops the "(unconfirmed)" off the office calendar and makes it solid.
+    await syncBookingToCalendar(contract.booking.id);
   }
 
   return { alreadySigned: false, bookingId: contract.booking.id, confirmed: outstanding === 0 };

@@ -10,6 +10,7 @@ import { cancelBooking, completeBooking, reopenBooking } from '@/lib/bookings';
 import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import type { TemplateKey } from '@/lib/messages';
 import { dateToIso, isoToDate, isIsoDate, todayInOps } from '@/lib/dates';
+import { syncBookingToCalendar } from '@/lib/calendar-sync';
 import { isEmail, toE164 } from '@/lib/http';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -43,6 +44,9 @@ export async function switchTruck(bookingId: string, truckId: string): Promise<A
   try {
     const updated = await reassignTruck(bookingId, truckId);
     await logEvent(bookingId, 'truck_reassigned', `Moved to Truck ${updated.truck?.code}`, who);
+    // Same days, different truck — the title and colour on the office calendar
+    // have to follow, or they load the wrong van.
+    await syncBookingToCalendar(bookingId);
     return done(`Moved to Truck ${updated.truck?.code}.`);
   } catch (err) {
     if (err instanceof NoTruckAvailableError) return { ok: false, error: err.message };
@@ -204,6 +208,7 @@ export async function createBooking(input: NewBookingInput): Promise<ActionResul
   );
 
   if (!input.sendContract) {
+    await syncBookingToCalendar(booking.id);
     return done(`${booking.reference} created on Truck ${truckCode}. Nothing sent — use Resend when you are ready.`);
   }
 
@@ -218,6 +223,7 @@ export async function createBooking(input: NewBookingInput): Promise<ActionResul
       await notify(id, 'booking_received');
       await notify(id, 'contract_to_sign');
       await notifyStaff(id, 'booking_received');
+      await syncBookingToCalendar(id);
     } catch (err) {
       console.error('notify failed', err);
       await logEvent(id, 'notify_failed', String(err), 'system');
@@ -329,6 +335,8 @@ export async function changeDates(
     // the wrong day.
     await notify(bookingId, 'dates_changed', { force: true });
     await notifyStaff(bookingId, 'dates_changed', { detail: reason || null });
+    // `from` is what makes this a move: the days it no longer covers get cleared.
+    await syncBookingToCalendar(bookingId, res.from);
 
     return done(`Moved to ${res.to.start} – ${res.to.end}. The renter has been told.`);
   } catch (err) {

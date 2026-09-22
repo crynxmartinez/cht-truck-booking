@@ -66,6 +66,23 @@ export const config = {
     },
   },
 
+  /**
+   * Diana's shared truck calendar, written to directly rather than through
+   * GoHighLevel's sync — GHL routes to one Google calendar per *user*, not per
+   * booking calendar, so it cannot tell Truck A from Truck B.
+   */
+  gcal: {
+    calendarId: process.env.GOOGLE_CALENDAR_ID || '',
+    clientEmail: process.env.GOOGLE_SA_EMAIL || '',
+    // Vercel stores this on one line; the PEM needs its newlines back.
+    privateKey: (process.env.GOOGLE_SA_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    get enabled() {
+      return Boolean(
+        process.env.GOOGLE_CALENDAR_ID && process.env.GOOGLE_SA_EMAIL && process.env.GOOGLE_SA_PRIVATE_KEY,
+      );
+    },
+  },
+
   allowedOrigins: str('ALLOWED_ORIGINS', '')
     .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))

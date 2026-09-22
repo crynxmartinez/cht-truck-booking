@@ -3,6 +3,7 @@ import { prisma } from './db';
 import { logEvent, notifyStaff, setStage } from './notify';
 import { markPurgeEligible } from './storage';
 import { newToken } from './tokens';
+import { removeBookingFromCalendar, syncBookingToCalendar } from './calendar-sync';
 
 /**
  * Booking lifecycle operations shared between the CRM and the cron jobs.
@@ -46,6 +47,7 @@ export async function cancelBooking(bookingId: string, reason: string, actor = '
   });
   await logEvent(bookingId, 'cancelled', reason || 'Cancelled', actor);
   await notifyStaff(bookingId, 'cancelled', { detail: reason || null });
+  await removeBookingFromCalendar(bookingId);
 }
 
 /** Put a cancelled or auto-released booking back in play. */
@@ -55,4 +57,5 @@ export async function reopenBooking(bookingId: string, actor = 'system') {
     data: { stage: Stage.CONTRACT_SENT, cancelledAt: null, cancelledReason: null },
   });
   await logEvent(bookingId, 'reopened', 'Booking reopened', actor);
+  await syncBookingToCalendar(bookingId);
 }

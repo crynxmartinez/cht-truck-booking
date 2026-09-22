@@ -1,5 +1,6 @@
 import { config } from '@/lib/config';
 import { ping } from '@/lib/ghl';
+import { ping as gcalPing } from '@/lib/gcal';
 import { blobAuthMode, blobConfigured } from '@/lib/storage';
 import { earliestBookable, hourInOps, latestBookable, todayInOps } from '@/lib/dates';
 import { TERMS_VERSION } from '@/lib/contract-terms';
@@ -9,6 +10,7 @@ export const dynamic = 'force-dynamic';
 /** A single page that answers "is this thing actually wired up?" */
 export default async function SettingsPage() {
   const ghl = config.ghl.enabled ? await ping() : null;
+  const gcal = config.gcal.enabled ? await gcalPing() : null;
 
   const checks: Array<{ label: string; ok: boolean; detail: string }> = [
     {
@@ -34,6 +36,15 @@ export default async function SettingsPage() {
           : blobAuthMode() === 'token'
             ? 'Connected via BLOB_READ_WRITE_TOKEN. Uploads are stored privately as WebP.'
             : 'Not connected. Connect a Blob store in Vercel, then redeploy so the deployment picks up BLOB_STORE_ID — uploads are refused until it does.',
+    },
+    {
+      label: 'Office calendar',
+      ok: Boolean(gcal?.ok),
+      detail: !config.gcal.enabled
+        ? 'Not connected. Set GOOGLE_CALENDAR_ID, GOOGLE_SA_EMAIL and GOOGLE_SA_PRIVATE_KEY — bookings will not appear on the shared Google calendar until you do.'
+        : gcal?.ok
+          ? `Writing to “${gcal.data.summary ?? config.gcal.calendarId}”. One event per rental day, 6 AM to 6 PM, colour-coded by truck.`
+          : `Configured but refused: ${gcal && !gcal.ok ? gcal.error : 'unknown error'}. Check the calendar is shared with ${config.gcal.clientEmail} as "Make changes to events".`,
     },
     {
       label: 'Staff alerts',

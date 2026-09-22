@@ -3,6 +3,7 @@ import { Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { createBookingWithTruck, NoTruckAvailableError } from '@/lib/availability';
 import { createPaperwork } from '@/lib/bookings';
+import { syncBookingToCalendar } from '@/lib/calendar-sync';
 import { earliestBookable, isIsoDate, latestBookable, rentalWindow } from '@/lib/dates';
 import { cleanString, clientIp, isEmail, json, preflight, rateLimit, toE164 } from '@/lib/http';
 import { newReference } from '@/lib/tokens';
@@ -136,6 +137,9 @@ export async function POST(req: Request) {
       await notify(booking.id, 'contract_to_sign');
       await setStage(booking.id, Stage.CONTRACT_SENT, 'system', 'Rental agreement sent automatically');
       await notifyStaff(booking.id, 'booking_received');
+      // The office watches Google, not this board. A held truck has to show up
+      // there straight away or somebody books over it.
+      await syncBookingToCalendar(booking.id);
     } catch (err) {
       console.error('notify failed', err);
       await logEvent(booking.id, 'notify_failed', String(err), 'system');

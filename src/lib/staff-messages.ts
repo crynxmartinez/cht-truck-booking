@@ -37,6 +37,18 @@ export type StaffContext = {
 
 export type StaffRendered = { subject: string; email: string; sms: string };
 
+/**
+ * Google Calendar opened on the pickup day.
+ *
+ * A day link rather than a link to the event itself: a rental is several
+ * events, one per day, and this needs no event id — so the alert still carries
+ * a useful link even if the calendar write failed or has not run yet.
+ */
+function calendarDayLink(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `https://calendar.google.com/calendar/r/day/${y}/${m}/${d}`;
+}
+
 /** Priority marker so a glanced text says whether it needs acting on. */
 const URGENT: StaffEvent[] = ['overdue', 'reschedule_requested', 'awaiting_approval'];
 
@@ -64,6 +76,7 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
     ``,
     `Open the board:`,
     board,
+    ...(config.gcal.enabled ? [``, `See it on the truck calendar:`, calendarDayLink(c.pickupDate)] : []),
   ].join('\n');
 
   const wrap = (subject: string, headline: string, sms: string): StaffRendered => ({

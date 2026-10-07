@@ -1,14 +1,10 @@
-<!-- ==========================================================
-     CORY HOME TEAM - 3-Day Truck Booking Widget
-     Paste this whole block into a GHL "Custom Code / HTML" element.
-     Scripts do NOT run inside the GHL editor preview - always test
-     on the published or preview URL.
-     The only thing you must edit is the data-api attribute below.
-     ========================================================== -->
-
-<div id="cht-truck-booking" data-api="https://cht-truck-booking.vercel.app"></div>
-
-<script>
+/*
+ * Cory Home Team truck booking widget.
+ *
+ * Served from here rather than pasted into GoHighLevel, so a change ships with
+ * a normal git push. The GHL page only holds the loader in ghl/loader.html.
+ * Scripts do NOT run in the GHL editor preview - test on the published page.
+ */
 (function () {
   var host = document.getElementById('cht-truck-booking');
   if (!host || host.shadowRoot) return;              // guard against double-paste
@@ -668,4 +664,3 @@
   renderCal();
   loadMonth(S.view.y, S.view.m);
 })();
-</script>

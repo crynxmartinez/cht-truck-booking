@@ -10,7 +10,8 @@ phone and mailbox.
 
 | Path | What it is |
 |---|---|
-| `ghl/cht-booking-widget.html` | The booking widget. Paste into a GHL **Custom Code** element. |
+| `public/widget.js` | The booking widget itself. Served by the app, so a git push updates it. |
+| `ghl/loader.html` | Two lines to paste into a GHL **Custom Code** element, once. |
 | `src/app/sign/[token]` | Rental and additional-driver agreements, signed in the browser. |
 | `src/app/checklist/[token]` | Pickup and drop-off checklists. One page, two modes. |
 | `src/app/app` | The ops CRM — stage board, card modal, fleet, storage, settings. |
@@ -71,9 +72,10 @@ rule is measuring against the wrong number.
 
 ### 4. The widget
 
-Open `ghl/cht-booking-widget.html`, set `data-api` to your deployed URL, and paste the
-whole block into a GHL **Custom Code** element. Add that page's origin to
-`ALLOWED_ORIGINS` or CORS will block it.
+Open `ghl/loader.html`, set `data-api` to your deployed URL, and paste it into a GHL
+**Custom Code** element. That is the only paste: the widget lives in `public/widget.js`
+and updates with every deploy. Add that page's origin to `ALLOWED_ORIGINS` or CORS will
+block it.
 
 Scripts do not run in the GHL editor preview — always test on the published URL.
 

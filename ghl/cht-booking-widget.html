@@ -458,9 +458,13 @@
     box.innerHTML =
       '<div class="drop" tabindex="0" role="button">' +
         '<b>Tap to upload ' + esc(label) + '</b>' +
-        '<small>JPG, PNG, HEIC or PDF &middot; a phone photo is ideal</small>' +
+        '<small>Take a photo or choose one &middot; JPG, PNG, HEIC or PDF</small>' +
       '</div>' +
-      '<input type="file" accept="image/*,application/pdf" capture="environment" hidden>';
+      // No `capture` attribute. It forces the camera and hides the photo
+      // library entirely, so somebody who already has a picture of their
+      // licence cannot get past this step — and it silently overrides the PDF
+      // we claim to accept. Without it the phone offers camera *and* library.
+      '<input type="file" accept="image/*,application/pdf" hidden>';
 
     var drop  = box.querySelector('.drop');
     var input = box.querySelector('input');

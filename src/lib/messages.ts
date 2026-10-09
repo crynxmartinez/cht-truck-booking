@@ -16,6 +16,7 @@ export type TemplateKey =
   | 'dates_changed'
   | 'rental_confirmed'
   | 'pickup_morning'
+  | 'pickup_reminder'
   | 'pickup_no_show_check'
   | 'return_day'
   | 'overdue'
@@ -193,7 +194,7 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
       return {
         subject: 'Your truck is ready — checklist inside',
         email: [
-          `Good morning ${c.firstName},`,
+          `Hi ${c.firstName},`,
           ``,
           `${truck} is waiting at ${addr}.`,
           ``,
@@ -211,9 +212,31 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
           SIGNOFF,
         ].join('\n'),
         sms:
-          `Good morning ${c.firstName} — ${truck} is ready. Lockbox code ${c.lockboxCode ?? '—'}, ` +
+          `Hi ${c.firstName} — ${truck} is ready. Lockbox code ${c.lockboxCode ?? '—'}, ` +
           `driver's side window. Photos before you drive off: ${pickList} ` +
           `Come by whenever works today. — Diana`,
+      };
+
+    case 'pickup_reminder':
+      return {
+        subject: 'Your truck is ready whenever you are',
+        email: [
+          `Hi ${c.firstName},`,
+          ``,
+          `A quick reminder — ${truck} is ready for you at ${addr}.`,
+          ``,
+          `Lockbox code: ${c.lockboxCode ?? '—'}`,
+          ``,
+          `Run the pickup checklist before you drive off:`,
+          pickList,
+          ``,
+          `If you've already picked up the truck, please disregard this message.`,
+          ``,
+          SIGNOFF,
+        ].join('\n'),
+        sms:
+          `Hi ${c.firstName}, reminder: ${truck} is ready. Lockbox code ${c.lockboxCode ?? '—'}. ` +
+          `Pickup checklist: ${pickList} — Already have the truck? Disregard this. — Diana, CHT`,
       };
 
     case 'pickup_no_show_check':
@@ -225,12 +248,18 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
           `Just checking in — we haven't seen your pickup checklist come through.`,
           `Did the lockbox open alright?`,
           ``,
+          `Lockbox code, in case you need it again: ${c.lockboxCode ?? '—'}`,
+          ``,
           `If you're at the truck now, the checklist is here: ${pickList}`,
           `If something went wrong, reply to this message and we'll sort it out.`,
           ``,
+          `If you've already picked up the truck, please disregard this message.`,
+          ``,
           SIGNOFF,
         ].join('\n'),
-        sms: `Hi ${c.firstName}, did you get ${truck} OK? We haven't seen your pickup photos yet: ${pickList} — Diana`,
+        sms:
+          `Hi ${c.firstName}, did you get ${truck} OK? Lockbox code ${c.lockboxCode ?? '—'}. ` +
+          `Pickup photos: ${pickList} — Already have the truck? Disregard this. — Diana`,
       };
 
     case 'return_day':

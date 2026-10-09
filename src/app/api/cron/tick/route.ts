@@ -4,9 +4,10 @@ import { config } from '@/lib/config';
 import { addDays, hourInOps, isoToDate, todayInOps } from '@/lib/dates';
 import { isAuthorisedCron } from '@/lib/auth';
 import { json } from '@/lib/http';
-import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
+import { logEvent, notify, notifyStaff } from '@/lib/notify';
 import { purgeAbandonedDrafts, purgeToTarget, reconcileOrphanBlobs } from '@/lib/storage';
 import { cancelBooking } from '@/lib/bookings';
+import { sendDuePickupMessage } from '@/lib/pickup-release';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,9 +36,10 @@ export async function GET(req: Request) {
   const should = (name: string, atHour: number) => forceJob === name || (!forceJob && hour === atHour);
 
   try {
-    if (should('pickup', config.pickupSmsHour)) jobs.pickup = await pickupMorning(today);
+    // Every hour, not at fixed hours: the schedule itself decides what is due.
+    // Running only at 6 AM is what stranded a renter approved at 10.
+    if (!forceJob || forceJob === 'pickup' || forceJob === 'nopickup') jobs.pickup = await pickupMessages(today);
     if (should('return', config.returnSmsHour)) jobs.return = await returnDay(today);
-    if (should('nopickup', config.noPickupCheckHour)) jobs.nopickup = await noPickupCheck(today);
     if (should('sweep', config.dailySweepHour)) jobs.sweep = await dailySweep(today);
   } catch (err) {
     console.error('cron tick failed', err);
@@ -50,21 +52,32 @@ export async function GET(req: Request) {
 /** Vercel's scheduler issues GET; allow POST so external schedulers work too. */
 export const POST = GET;
 
-// ---------------------------------------------------------------- 6:00 AM
+// ---------------------------------------------------------------- pickup day
 
-async function pickupMorning(today: string) {
-  const due = await prisma.booking.findMany({
-    where: { stage: Stage.CONFIRMED, pickupDate: isoToDate(today) },
+/**
+ * The code, then up to two reminders. Which one is due is decided by
+ * pickup-schedule.ts; this just offers it every booking picking up today.
+ */
+async function pickupMessages(today: string) {
+  const candidates = await prisma.booking.findMany({
+    where: { stage: { in: [Stage.CONFIRMED, Stage.PICKUP_DAY] }, pickupDate: isoToDate(today) },
     select: { id: true, reference: true },
   });
 
   const results: string[] = [];
-  for (const b of due) {
-    const res = await notify(b.id, 'pickup_morning');
-    await setStage(b.id, Stage.PICKUP_DAY, 'system', 'Pickup day — lockbox code sent');
-    results.push(`${b.reference}: sent ${res.sent.join('+') || 'none'}${res.errors.length ? ` (${res.errors.join('; ')})` : ''}`);
+  for (const b of candidates) {
+    // One booking failing must not stop the rest, and must not take the
+    // return-day texts and the daily sweep down with it. This job now runs
+    // every hour in the same tick as both.
+    try {
+      const sent = await sendDuePickupMessage(b.id);
+      if (sent) results.push(`${b.reference}: ${sent}`);
+    } catch (err) {
+      console.error('pickup message failed', b.reference, err);
+      results.push(`${b.reference}: ERROR ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
-  return { count: due.length, results };
+  return { checked: candidates.length, results };
 }
 
 // ---------------------------------------------------------------- 7:00 AM
@@ -81,22 +94,6 @@ async function returnDay(today: string) {
     results.push(`${b.reference}: sent ${res.sent.join('+') || 'none'}`);
   }
   return { count: due.length, results };
-}
-
-// ---------------------------------------------------------------- 2:00 PM
-
-async function noPickupCheck(today: string) {
-  const stuck = await prisma.booking.findMany({
-    where: {
-      stage: Stage.PICKUP_DAY,
-      pickupDate: isoToDate(today),
-      checklists: { some: { phase: 'PICKUP', submittedAt: null } },
-    },
-    select: { id: true, reference: true },
-  });
-
-  for (const b of stuck) await notify(b.id, 'pickup_no_show_check');
-  return { count: stuck.length };
 }
 
 // ---------------------------------------------------------------- 9:00 AM

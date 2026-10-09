@@ -9,7 +9,7 @@ export default defineConfig({
       // Coverage is scoped to the pure scheduling logic so the 80% bar means
       // something. Gating on the whole repo would measure server actions and
       // pages that have no tests yet and say nothing about this change.
-      include: ['src/lib/pickup-schedule.ts'],
+      include: ['src/lib/pickup-schedule.ts', 'src/lib/pickup-release.ts'],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     },
   },

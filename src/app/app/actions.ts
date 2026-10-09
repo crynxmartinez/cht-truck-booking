@@ -320,7 +320,16 @@ export async function changeDates(
     await prisma.messageLog.deleteMany({
       where: {
         bookingId,
-        template: { in: ['pickup_morning', 'return_day', 'pickup_no_show_check', 'overdue', 'staff_overdue'] },
+        template: {
+          in: [
+            'pickup_morning',
+            'pickup_reminder',
+            'return_day',
+            'pickup_no_show_check',
+            'overdue',
+            'staff_overdue',
+          ],
+        },
       },
     });
 

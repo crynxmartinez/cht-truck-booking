@@ -34,6 +34,10 @@ export const config = {
   pickupSmsHour: num('PICKUP_SMS_HOUR', 6),
   returnSmsHour: num('RETURN_SMS_HOUR', 7),
   noPickupCheckHour: num('NO_PICKUP_CHECK_HOUR', 14),
+  /** Second pickup message, sent only while the pickup checklist is outstanding. */
+  pickupReminderHour: num('PICKUP_REMINDER_HOUR', 10),
+  /** Pickup reminders stop after this hour. */
+  pickupLastHour: num('PICKUP_LAST_REMINDER_HOUR', 19),
   dailySweepHour: num('DAILY_SWEEP_HOUR', 9),
 
   /** A truck held by an unsigned contract is released after this long. */

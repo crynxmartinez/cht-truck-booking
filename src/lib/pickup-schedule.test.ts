@@ -133,3 +133,36 @@ describe('nextPickupMessage — configuration', () => {
     expect(nextPickupMessage(booking(), at(7), custom)).toBe('pickup_morning');
   });
 });
+
+describe('nextPickupMessage — edges found in review', () => {
+  it('allows a few minutes of send latency, so a reminder does not slip a whole hour', () => {
+    // The code finished sending at 9:06 after the cron started at 9:00. At 12:00
+    // that is 2h54m by the stamp — three hours of real spacing.
+    const b = booking({ stage: 'PICKUP_DAY', sent: { pickup_morning: sentAt(9, 6) } });
+    expect(nextPickupMessage(b, at(12))).toBe('pickup_reminder');
+  });
+
+  it('but not a reminder that is clearly too soon', () => {
+    const b = booking({ stage: 'PICKUP_DAY', sent: { pickup_morning: sentAt(9, 30) } });
+    expect(nextPickupMessage(b, at(12))).toBeNull(); // 2h30m
+  });
+
+  it('does nothing for a booking already on Pickup Day that was never sent the code', () => {
+    // Unreachable in normal flow, but a manual stage move can produce it, and
+    // it must not fire a reminder for a code nobody has received.
+    expect(nextPickupMessage(booking({ stage: 'PICKUP_DAY' }), at(11))).toBeNull();
+  });
+
+  it('still sends the code if the renter somehow submitted the checklist first', () => {
+    expect(nextPickupMessage(booking({ pickupSubmitted: true }), at(8))).toBe('pickup_morning');
+  });
+
+  it('allows the final check up to and including the 7 PM hour, then stops', () => {
+    const b = booking({
+      stage: 'PICKUP_DAY',
+      sent: { pickup_morning: sentAt(13), pickup_reminder: sentAt(16) },
+    });
+    expect(nextPickupMessage(b, at(19, 30))).toBe('pickup_no_show_check');
+    expect(nextPickupMessage(b, at(20))).toBeNull();
+  });
+});

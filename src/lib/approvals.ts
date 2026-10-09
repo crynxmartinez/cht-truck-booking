@@ -2,6 +2,7 @@ import { Stage } from '@prisma/client';
 import { prisma } from './db';
 import { logEvent, mainAdmin, notify, notifyStaff, setStage } from './notify';
 import { syncBookingToCalendar } from './calendar-sync';
+import { sendDuePickupMessage } from './pickup-release';
 
 /**
  * Main-admin counter-signature.
@@ -82,6 +83,12 @@ export async function approveContract(contractId: string) {
     await notifyStaff(contract.booking.id, 'confirmed');
     // Drops the "(unconfirmed)" off the office calendar and makes it solid.
     await syncBookingToCalendar(contract.booking.id);
+    // Approved on the pickup day itself? The 6 AM job has already come and gone
+    // without them, so release the code now rather than never. Does nothing on
+    // any other day, and never lets a messaging failure undo the approval.
+    await sendDuePickupMessage(contract.booking.id).catch((err) =>
+      console.error('pickup release after approval failed', err),
+    );
   }
 
   return { alreadySigned: false, bookingId: contract.booking.id, confirmed: outstanding === 0 };

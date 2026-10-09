@@ -44,3 +44,6 @@ sample pdf/
 
 # TypeScript incremental build artifact
 *.tsbuildinfo
+
+# Test coverage output
+coverage/

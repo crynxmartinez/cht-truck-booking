@@ -51,3 +51,27 @@ describe('pickup messages repeat the details a renter at the truck needs', () =>
     expect(m.sms).not.toContain('undefined');
   });
 });
+
+describe('truck_changed — the renter is told when their truck changes', () => {
+  const changed = render('truck_changed', { ...ctx, truckCode: 'B' });
+
+  it('names the new truck in both email and text', () => {
+    expect(changed.email).toContain('Truck B');
+    expect(changed.sms).toContain('Truck B');
+  });
+
+  it('says the dates and pickup address have not changed', () => {
+    expect(changed.email.toLowerCase()).toContain('unchanged');
+    expect(changed.email).toContain('Oct');
+  });
+
+  it('does not send a lockbox code early — it differs per truck and goes out on the day', () => {
+    expect(changed.email).not.toContain('48213');
+    expect(changed.sms).not.toContain('48213');
+    expect(changed.email).toContain('6 AM');
+  });
+
+  it('has a subject that says what happened', () => {
+    expect(changed.subject.toLowerCase()).toContain('truck');
+  });
+});

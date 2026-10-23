@@ -157,3 +157,14 @@ No critical or high findings. Verified against the code, then fixed:
   overlap property test draws all ten stages.
 
 Final totals: 185 tests; 99.1% statements and 99.2% branches on the rule modules.
+
+### CRM calendar: a switched-off truck is no longer drawn as free
+
+With Truck A off, the month view still showed A as free on every day and
+said "both free". A pure function (`dayStates`, 8 tests) now decides what each
+day shows: a truck that is off is hatched grey, a booking always wins over
+"off" so a commitment is never hidden, the label counts only trucks that are
+on, and the book button appears only when a truck is genuinely free. Checked on
+the live data (October): no day says "both free", free days read "Truck B
+free", days with B booked offer no booking, and the legend names the truck that
+is off. 193 tests.

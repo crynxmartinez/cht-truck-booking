@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { addBlackout, type ActionResult } from '../actions';
+import { dayStates } from '@/lib/calendar-layout';
 import { BookingModal } from '../BookingModal';
 import { NewBooking } from '../NewBooking';
 import type { BookingDetail, TruckOption } from '../types';
@@ -41,7 +42,7 @@ const pretty = (iso: string) =>
 
 export function MonthCalendar({
   title, prevHref, nextHref, todayHref, filter, filterHrefs,
-  monthIndex, today, weeks, trucks, defaultDays, loadDetail,
+  monthIndex, today, weeks, trucks, off, defaultDays, loadDetail,
 }: {
   title: string;
   prevHref: string;
@@ -53,6 +54,8 @@ export function MonthCalendar({
   today: string;
   weeks: WeekDTO[];
   trucks: TruckOption[];
+  /** Which trucks are switched off, so they are drawn as off rather than free. */
+  off: { a: boolean; b: boolean };
   defaultDays: number;
   loadDetail: (id: string) => Promise<BookingDetail | null>;
 }) {
@@ -180,6 +183,7 @@ export function MonthCalendar({
                 if (s.truck === 'A') busy.a = true;
                 if (s.truck === 'B') busy.b = true;
               }
+              const st = dayStates(busy, off);
               const cls = [
                 'cal-day',
                 isWeekend(di) ? 'we' : '',
@@ -191,11 +195,17 @@ export function MonthCalendar({
                 <div key={d} className={cls} style={{ position: 'relative' }}>
                   <div className="cal-num">{Number(d.slice(8))}</div>
                   <div className="cal-dots">
-                    <i className={busy.a ? 'busy-a' : undefined} title={`Truck A ${busy.a ? 'booked' : 'free'}`} />
-                    <i className={busy.b ? 'busy-b' : undefined} title={`Truck B ${busy.b ? 'booked' : 'free'}`} />
-                    {!busy.a && !busy.b ? <small>both free</small> : null}
+                    <i
+                      className={st.a === 'busy' ? 'busy-a' : st.a === 'off' ? 'off' : undefined}
+                      title={`Truck A ${st.a === 'busy' ? 'booked' : st.a === 'off' ? 'is switched off' : 'free'}`}
+                    />
+                    <i
+                      className={st.b === 'busy' ? 'busy-b' : st.b === 'off' ? 'off' : undefined}
+                      title={`Truck B ${st.b === 'busy' ? 'booked' : st.b === 'off' ? 'is switched off' : 'free'}`}
+                    />
+                    {st.label ? <small>{st.label}</small> : null}
                   </div>
-                  {!busy.a || !busy.b ? (
+                  {st.bookable ? (
                     <button
                       className="cal-add"
                       title={`Book or block ${pretty(d)}`}
@@ -225,7 +235,8 @@ export function MonthCalendar({
           <p className="tiny">Nothing left this month.</p>
         ) : (
           agendaDays.map(({ day, segs, busy }) => {
-            const free = [!busy.a && 'A', !busy.b && 'B'].filter(Boolean) as string[];
+            const st = dayStates(busy, off);
+            const free = [st.a === 'free' && 'A', st.b === 'free' && 'B'].filter(Boolean) as string[];
             return (
               <div className={day === today ? 'agenda-day is-today' : 'agenda-day'} key={day}>
                 <h4>
@@ -252,6 +263,12 @@ export function MonthCalendar({
         <span><i style={{ background: '#995a06' }} />Truck B</span>
         <span><i style={{ background: 'repeating-linear-gradient(45deg,#6b6e73 0 4px,#7d8085 4px 8px)' }} />Blocked</span>
         <span><i style={{ background: '#1f4fa3', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,.65)' }} />Awaiting your signature</span>
+        {off.a || off.b ? (
+          <span>
+            <i style={{ background: 'repeating-linear-gradient(45deg,#c9ccd1 0 3px,#e6e8ea 3px 6px)' }} />
+            Truck {[off.a && 'A', off.b && 'B'].filter(Boolean).join(' and ')} switched off
+          </span>
+        ) : null}
         <span className="tiny">Dots show each truck &middot; click a free day to book or block it</span>
       </div>
 

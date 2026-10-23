@@ -139,3 +139,34 @@ export function segmentClass(s: Segment): string {
   if (s.isEnd) return 'end';
   return 'mid';
 }
+
+export type TruckState = 'busy' | 'free' | 'off';
+
+/**
+ * What the calendar says about one day, per truck.
+ *
+ * A truck that is switched off used to be drawn as free on every day, which
+ * told the office there was a truck to book when the booking site could not
+ * offer one. A booking wins over "off": a truck that is off but still has
+ * someone on it must show as booked, or the commitment would vanish from view.
+ */
+export function dayStates(
+  busy: { a: boolean; b: boolean },
+  off: { a: boolean; b: boolean },
+): { a: TruckState; b: TruckState; label: string | null; bookable: boolean } {
+  const state = (isBusy: boolean, isOff: boolean): TruckState => (isBusy ? 'busy' : isOff ? 'off' : 'free');
+  const a = state(busy.a, off.a);
+  const b = state(busy.b, off.b);
+
+  const free = [a === 'free' && 'A', b === 'free' && 'B'].filter(Boolean) as string[];
+  const label =
+    free.length === 2
+      ? 'both free'
+      : free.length === 1
+        ? `Truck ${free[0]} free`
+        : a === 'off' && b === 'off'
+          ? 'no truck on'
+          : null;
+
+  return { a, b, label, bookable: free.length > 0 };
+}

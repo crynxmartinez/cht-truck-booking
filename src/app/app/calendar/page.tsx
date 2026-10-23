@@ -36,7 +36,7 @@ export default async function CalendarPage({
   const from = weeks[0].days[0];
   const to = weeks[weeks.length - 1].days[6];
 
-  const [bookings, blackouts, trucks] = await Promise.all([
+  const [bookings, blackouts, trucks, allTrucks] = await Promise.all([
     prisma.booking.findMany({
       where: {
         stage: { notIn: ['CANCELLED'] },
@@ -53,6 +53,9 @@ export default async function CalendarPage({
       include: { truck: { select: { code: true } } },
     }),
     prisma.truck.findMany({ where: { active: true }, select: { id: true, code: true }, orderBy: { code: 'asc' } }),
+    // Including the ones switched off, so the grid can show them as off
+    // instead of pretending they are free.
+    prisma.truck.findMany({ select: { code: true, active: true } }),
   ]);
 
   const items: CalItem[] = [
@@ -131,6 +134,10 @@ export default async function CalendarPage({
             })),
           }))}
           trucks={trucks as TruckOption[]}
+          off={{
+            a: allTrucks.some((t) => t.code === 'A' && !t.active),
+            b: allTrucks.some((t) => t.code === 'B' && !t.active),
+          }}
           defaultDays={config.rentalBlockDays}
           loadDetail={loadDetail}
         />

@@ -1050,6 +1050,11 @@
   background: #995a06;
   border-color: #995a06;
 }
+/* A truck that is switched off: hatched grey, clearly not "free" and not "booked". */
+.cal-dots i.off {
+  border-color: #c9ccd1;
+  background: repeating-linear-gradient(45deg, #c9ccd1 0 2px, #eceef0 2px 4px);
+}
 .cal-dots small {
   font-size: 9.5px;
   color: var(--faint);

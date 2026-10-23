@@ -16,13 +16,19 @@ import { GUARDED_STAGES, OVERLAP_CONSTRAINT } from '../src/lib/overlap-guard';
  * truck moves, and whenever something looks off.
  */
 
-type Result = { name: string; status: 'PASS' | 'FAIL' | 'SKIP'; detail: string[] };
+type Result = { name: string; status: 'PASS' | 'FAIL' | 'WARN' | 'SKIP'; detail: string[] };
 const results: Result[] = [];
-const record = (name: string, problems: string[], skip?: string) =>
+/**
+ * `level` is how bad a problem is. A WARN is printed but never fails the run:
+ * it is for things only a person can judge, like bookings left on a truck
+ * that is switched off — fine when bookings are merely paused, a problem when
+ * the truck is out of service.
+ */
+const record = (name: string, problems: string[], skip?: string, level: 'FAIL' | 'WARN' = 'FAIL') =>
   results.push(
     skip
       ? { name, status: 'SKIP', detail: [skip] }
-      : { name, status: problems.length ? 'FAIL' : 'PASS', detail: problems },
+      : { name, status: problems.length ? level : 'PASS', detail: problems },
   );
 
 const HOLDING = [...GUARDED_STAGES];
@@ -64,7 +70,9 @@ async function main() {
     'no upcoming booking sits on a truck that is switched off',
     holding
       .filter((b) => b.truckId && byId.get(b.truckId)?.active === false && dateToIso(b.blockEnd) >= today)
-      .map((b) => `${b.reference} (${b.firstName} ${b.lastName}) is on Truck ${b.truck?.code}, which is off`),
+      .map((b) => `${b.reference} (${b.firstName} ${b.lastName}) is on Truck ${b.truck?.code}, which is off — fine if you are only pausing new bookings; move them if the truck is out of service`),
+    undefined,
+    'WARN',
   );
 
   // 4. No message carries another truck's lockbox code.
@@ -153,8 +161,9 @@ async function main() {
     console.log(`${r.status}  ${r.name}`);
     for (const d of r.detail) console.log(`        ${d}`);
   }
-  const failed = results.filter((r) => r.status === 'FAIL').length;
-  console.log(`\n${results.length - failed - results.filter((r) => r.status === 'SKIP').length} passed, ${failed} failed, ${results.filter((r) => r.status === 'SKIP').length} skipped.`);
+  const count = (s: Result['status']) => results.filter((r) => r.status === s).length;
+  const failed = count('FAIL');
+  console.log(`\n${count('PASS')} passed, ${failed} failed, ${count('WARN')} to look at, ${count('SKIP')} skipped.`);
   if (failed) process.exitCode = 1;
 }
 

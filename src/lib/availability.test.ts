@@ -221,3 +221,24 @@ describe('the overlap guard — a refused write becomes a plain refusal, not a c
     await expect(reassignTruck('b1', 'truck-b')).rejects.toThrow('connection reset');
   });
 });
+
+describe('createBookingWithTruck — while no truck is switched on', () => {
+  it('tells the customer plainly that bookings are paused, not that nothing is "set up"', async () => {
+    findTrucks.mockResolvedValue([]);
+    const attempt = createBookingWithTruck({
+      pickupDate: '2026-11-02', reference: 'CHT-X', firstName: 'A', lastName: 'B',
+      email: 'a@b.co', phone: '+15555550100',
+    });
+    await expect(attempt).rejects.toBeInstanceOf(NoTruckAvailableError);
+    await expect(attempt).rejects.toThrow('We are not taking new bookings right now.');
+  });
+
+  it('writes nothing', async () => {
+    findTrucks.mockResolvedValue([]);
+    await createBookingWithTruck({
+      pickupDate: '2026-11-02', reference: 'CHT-X', firstName: 'A', lastName: 'B',
+      email: 'a@b.co', phone: '+15555550100',
+    }).catch(() => undefined);
+    expect(createBooking).not.toHaveBeenCalled();
+  });
+});

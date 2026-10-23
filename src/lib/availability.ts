@@ -165,7 +165,9 @@ export async function createBookingWithTruck(input: {
         select: { id: true, code: true },
         orderBy: { code: 'asc' },
       });
-      if (trucks.length === 0) throw new NoTruckAvailableError('No trucks are set up yet.');
+      // Every truck switched off is a deliberate pause, not a missing setup, and
+      // this is what a customer with the form already open will read.
+      if (trucks.length === 0) throw new NoTruckAvailableError('We are not taking new bookings right now.');
 
       const start = isoToDate(w.blockStart);
       const end = isoToDate(w.blockEnd);

@@ -83,3 +83,77 @@ not been queued or sent. The code is the real hazard — it differs per truck.
 - `messages.test.ts`: the "your signed agreement was issued for the earlier
   truck" line appears only when the renter has actually signed.
 - 118 of 118 pass.
+
+## Hardening pass (24 Oct 2026)
+
+Done after the three live bookings were moved, working from raw records rather
+than from the code's own statements.
+
+### What the raw records showed
+
+- **Message text, read from `MessageLog.body`** (not just `status = SENT`):
+  a swap on the pickup day itself told the renter "you will still get a text at
+  6 AM on the day" at 8 AM. The code did arrive 11 minutes later, but the
+  promise was false. The text message also printed a raw date (`2026-10-23`).
+  Both fixed and tested.
+- **Delivery, read back from GoHighLevel:** all four texts `delivered`; the
+  emails `delivered`, two `opened` by the renters.
+- **Signed PDFs, text extracted:** all three print Truck A's plate (764302D)
+  while the bookings sit on Truck B (705921E). Expected, and now confirmed on
+  the documents themselves. My first draft of the preview tool claimed the PDF
+  prints the *current* truck's plate; reading the real PDFs showed that was
+  wrong, and the tool's wording was corrected.
+- **Google Calendar, read back:** 12 events, each correct, no orphans.
+
+### A hole the swap work exposed
+
+`moveStage` and `reopen` never checked for overlap, so reopening a cancelled
+booking onto a truck since booked by someone else silently double-booked it.
+
+### What was added
+
+| Piece | Evidence |
+|---|---|
+| Postgres exclusion constraint `bookings_no_overlap` on the live table | Rehearsed in a rolled-back transaction, then installed; re-run is a no-op |
+| Same constraint exercised with **two real connections** on a throwaway table | `npm run guard:verify` — 11 of 11: a second writer waits, is refused once the first commits, succeeds if the first rolls back |
+| Constraint exercised on the **real** `bookings` table, rolled back | An overlapping move is refused; adjacent days, the other truck, and an ordinary stage change are all allowed; real rows unchanged |
+| A refused write becomes a plain message, not a crash | `availability.test.ts`, `bookings.test.ts`, `actions.test.ts` |
+| Property tests (fast-check, up to 2000 random cases each) | The swap rule equals an independent statement of it; a simulated day of hourly ticks for **every** approval hour never sends more than 3 messages, never twice, never after collection, code first and exactly once; overlap detection equals brute force |
+| `npm run check:invariants`, read-only, against live data | 6 of 6 pass: every booking has a truck, no overlaps, nothing upcoming on an off truck, no message carries the wrong lockbox code, calendar matches bookings (12 events read back), guard installed |
+| `npm run swap:preview` | Shows what a swap would send, say and change; verified to change nothing (message and event counts identical before and after) |
+
+### Totals
+
+172 tests. Coverage on the five rule modules: 99.1% statements, 99.2%
+branches, 90.9% functions; `truck-swap`, `invariants` and `overlap-guard` at 100%.
+
+### Not done, and why
+
+- A **browser end-to-end test** of the booking-window button against a preview
+  deployment. The live app was driven by hand for the real moves, not by a
+  repeatable test.
+- The signed PDF is still not regenerated, and no addendum is generated. The
+  contract wording ("or a comparable vehicle") is an attorney decision.
+- Prisma does not know about the constraint. `prisma db push` is not part of
+  the build, but if someone runs it, check `npm run check:invariants` afterwards;
+  `npm run guard:apply -- --apply` reinstalls it safely.
+
+### Review of the hardening (ECC `code-reviewer`) and what it fixed
+
+No critical or high findings. Verified against the code, then fixed:
+
+- `approveContract` never checked the booking's stage, so counter-signing a
+  signed agreement on a **cancelled** booking would quietly bring it back as
+  Confirmed (an old bug, not one the guard introduced). Now refused, tested.
+- `completeChecklist` refused cancelled but not **completed** bookings, so a
+  late submission could drag a closed booking back to Returned/In use, and
+  would fail after the checklist was already marked submitted. Now refused
+  up front, in the library and the route, tested.
+- The invariant checker's Google time window was only correct for timezones
+  west of Greenwich; it is now wide on both sides. Finished bookings' calendar
+  events are kept as history, so they are no longer reported as strays; and a
+  confirmed booking left "tentative" on Google is now caught.
+- The audit's list of holding stages is now the guard's own list, and the
+  overlap property test draws all ten stages.
+
+Final totals: 185 tests; 99.1% statements and 99.2% branches on the rule modules.

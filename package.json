@@ -16,7 +16,11 @@
     "seed": "tsx prisma/seed.ts",
     "postinstall": "prisma generate",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "check:invariants": "tsx --env-file=.env scripts/check-invariants.ts",
+    "swap:preview": "tsx --env-file=.env scripts/preview-swap.ts",
+    "guard:apply": "tsx --env-file=.env scripts/apply-overlap-guard.ts",
+    "guard:verify": "tsx --env-file=.env scripts/verify-overlap-guard.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

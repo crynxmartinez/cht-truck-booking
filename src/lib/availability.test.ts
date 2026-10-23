@@ -7,16 +7,22 @@ const findClash = vi.fn();
 const findBlackout = vi.fn();
 const updateBooking = vi.fn();
 const countCodes = vi.fn();
+const findTrucks = vi.fn();
+const findBookings = vi.fn();
+const findBlackouts = vi.fn();
+const createBooking = vi.fn();
 
 const tx = {
   $queryRaw: (...a: unknown[]) => queryRaw(...a),
   booking: {
     findUniqueOrThrow: (...a: unknown[]) => findBooking(...a),
     findFirst: (...a: unknown[]) => findClash(...a),
+    findMany: (...a: unknown[]) => findBookings(...a),
     update: (...a: unknown[]) => updateBooking(...a),
+    create: (...a: unknown[]) => createBooking(...a),
   },
-  truck: { findUnique: (...a: unknown[]) => findTruck(...a) },
-  blackoutDate: { findFirst: (...a: unknown[]) => findBlackout(...a) },
+  truck: { findUnique: (...a: unknown[]) => findTruck(...a), findMany: (...a: unknown[]) => findTrucks(...a) },
+  blackoutDate: { findFirst: (...a: unknown[]) => findBlackout(...a), findMany: (...a: unknown[]) => findBlackouts(...a) },
   // Has this booking's pickup-day lockbox code gone out (or started going out)?
   messageLog: { count: (...a: unknown[]) => countCodes(...a) },
 };
@@ -25,7 +31,14 @@ vi.mock('./db', () => ({
   prisma: { $transaction: (fn: (t: typeof tx) => unknown) => fn(tx) },
 }));
 
-import { NoTruckAvailableError, SwapNotAllowedError, reassignTruck } from './availability';
+import {
+  NoTruckAvailableError,
+  SwapNotAllowedError,
+  createBookingWithTruck,
+  reassignTruck,
+  rescheduleBooking,
+} from './availability';
+import { OVERLAP_MESSAGE } from './overlap-guard';
 
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
@@ -172,5 +185,39 @@ describe('reassignTruck — locking and boundaries', () => {
     countCodes.mockResolvedValue(1);
     accepted({ pickupDate: day('2026-10-24'), blockStart: day('2026-10-24'), blockEnd: day('2026-10-26') });
     await expect(reassignTruck('b1', 'truck-b')).rejects.toBeInstanceOf(SwapNotAllowedError);
+  });
+});
+
+describe('the overlap guard — a refused write becomes a plain refusal, not a crash', () => {
+  const violation = { code: '23P01', message: 'conflicting key value violates exclusion constraint "bookings_no_overlap"' };
+
+  it('a swap the database refuses is reported as the truck being booked', async () => {
+    updateBooking.mockRejectedValue(violation);
+    await expect(reassignTruck('b1', 'truck-b')).rejects.toThrow(OVERLAP_MESSAGE);
+    await expect(reassignTruck('b1', 'truck-b')).rejects.toBeInstanceOf(NoTruckAvailableError);
+  });
+
+  it('a reschedule the database refuses is reported the same way', async () => {
+    accepted();
+    updateBooking.mockRejectedValue(violation);
+    await expect(rescheduleBooking('b1', '2026-11-02', 3)).rejects.toBeInstanceOf(NoTruckAvailableError);
+  });
+
+  it('a new booking the database refuses is reported as the date being taken', async () => {
+    findTrucks.mockResolvedValue([{ id: 'truck-b', code: 'B' }]);
+    findBookings.mockResolvedValue([]);
+    findBlackouts.mockResolvedValue([]);
+    createBooking.mockRejectedValue(violation);
+    await expect(
+      createBookingWithTruck({
+        pickupDate: '2026-11-02', reference: 'CHT-X', firstName: 'A', lastName: 'B',
+        email: 'a@b.co', phone: '+15555550100',
+      }),
+    ).rejects.toBeInstanceOf(NoTruckAvailableError);
+  });
+
+  it('lets any other database error through untouched', async () => {
+    updateBooking.mockRejectedValue(new Error('connection reset'));
+    await expect(reassignTruck('b1', 'truck-b')).rejects.toThrow('connection reset');
   });
 });

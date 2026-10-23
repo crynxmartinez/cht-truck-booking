@@ -70,6 +70,10 @@ export async function completeChecklist(input: {
   });
   if (!checklist) throw new Error('Checklist not found.');
   if (checklist.booking.stage === Stage.CANCELLED) throw new Error('This booking was cancelled.');
+  // A closed booking must not be dragged back to Returned or In use: that would
+  // re-enter days another renter may now hold, and it would happen AFTER the
+  // checklist below is marked submitted, so a retry could never repair it.
+  if (checklist.booking.stage === Stage.COMPLETED) throw new Error('This booking has already been closed.');
   if (checklist.submittedAt) return { alreadySubmitted: true, missing: [] as string[] };
 
   const missing = await missingChecklistEvidence(checklist.bookingId, checklist.phase);

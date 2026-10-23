@@ -1,5 +1,5 @@
 import { config } from './config';
-import { formatLong } from './dates';
+import { formatLong, formatMedium } from './dates';
 import { checklistUrl, signUrl } from './tokens';
 
 /**
@@ -44,6 +44,8 @@ export type MessageContext = {
   renterName?: string | null;
   /** The renter has already signed the rental agreement. */
   agreementSigned?: boolean;
+  /** Pickup is today. A "text at 6 AM on the day" promise is already false by then. */
+  pickupIsToday?: boolean;
 };
 
 const SIGNOFF = 'Diana\nCory Home Team';
@@ -155,7 +157,9 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
           `Due back: ${back}`,
           ``,
           `Everything else is unchanged — same dates, same pickup at ${addr}.`,
-          `You will still get a text at ${hourLabel(config.pickupSmsHour)} on the day with the lockbox code for ${truck}.`,
+          c.pickupIsToday
+            ? `Your lockbox code for ${truck} will be texted to you today.`
+            : `You will still get a text at ${hourLabel(config.pickupSmsHour)} on the day with the lockbox code for ${truck}.`,
           ``,
           ...(c.agreementSigned
             ? [
@@ -169,8 +173,12 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
           SIGNOFF,
         ].join('\n'),
         sms:
-          `Hi ${c.firstName}, a quick change: your Cory Home Team truck rental on ${c.pickupDate} ` +
-          `is now on ${truck}. Same dates and pickup spot; your lockbox code comes by text at ${hourLabel(config.pickupSmsHour)} that day. — Diana`,
+          `Hi ${c.firstName}, a quick change: your Cory Home Team truck rental on ${formatMedium(c.pickupDate)} ` +
+          `is now on ${truck}. Same dates and pickup spot; ` +
+          (c.pickupIsToday
+            ? 'your lockbox code will be texted to you today.'
+            : `your lockbox code comes by text at ${hourLabel(config.pickupSmsHour)} that day.`) +
+          ' — Diana',
       };
 
     case 'dates_changed':

@@ -26,6 +26,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (!checklist) return json({ error: 'This link is not valid.' }, { status: 404 });
   if (checklist.submittedAt) return json({ ok: true, alreadySubmitted: true });
   if (checklist.booking.stage === 'CANCELLED') return json({ error: 'This booking was cancelled.' }, { status: 410 });
+  if (checklist.booking.stage === 'COMPLETED') return json({ error: 'This booking has already been closed.' }, { status: 410 });
 
   let body: any;
   try {

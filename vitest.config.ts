@@ -12,7 +12,13 @@ export default defineConfig({
       // Coverage is scoped to the pure rule modules so the 80% bar means
       // something. Gating on the whole repo would measure server actions and
       // pages that have no tests yet and say nothing about these changes.
-      include: ['src/lib/pickup-schedule.ts', 'src/lib/pickup-release.ts', 'src/lib/truck-swap.ts'],
+      include: [
+        'src/lib/pickup-schedule.ts',
+        'src/lib/pickup-release.ts',
+        'src/lib/truck-swap.ts',
+        'src/lib/invariants.ts',
+        'src/lib/overlap-guard.ts',
+      ],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     },
   },

@@ -101,4 +101,28 @@ describe('diffCalendar — the calendar must match the bookings one for one', ()
   it('leaves alone events the office added by hand', () => {
     expect(diffCalendar([], [got('abc123', 'Dentist')]).orphans).toEqual([]);
   });
+
+  it('reports a confirmed booking that Google still shows as tentative', () => {
+    const d = diffCalendar(
+      [{ id: 'cht1', summary: 'Truck B · Ana', colorId: '6', status: 'confirmed' }],
+      [{ id: 'cht1', summary: 'Truck B · Ana', colorId: '6', status: 'tentative' }],
+    );
+    expect(d.wrong.map((w) => w.id)).toEqual(['cht1']);
+  });
+
+  it('reads a missing status as confirmed, which is Google’s own default', () => {
+    const d = diffCalendar(
+      [{ id: 'cht1', summary: 'Truck B · Ana', colorId: '6', status: 'confirmed' }],
+      [{ id: 'cht1', summary: 'Truck B · Ana', colorId: '6' }],
+    );
+    expect(d.wrong).toEqual([]);
+  });
+
+  it('does not call a finished booking’s old events strays, because they are kept as history', () => {
+    expect(diffCalendar([], [got('chtDONE', 'Truck A · Past')], ['chtDONE']).orphans).toEqual([]);
+  });
+
+  it('still calls an event stray if nothing known owns it', () => {
+    expect(diffCalendar([], [got('chtLOST', 'Truck A · ?')], ['chtDONE']).orphans).toEqual(['chtLOST']);
+  });
 });

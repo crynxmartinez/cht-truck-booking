@@ -4,6 +4,7 @@ import { config } from './config';
 import { dateToIso, eachDay, formatMedium, type IsoDate } from './dates';
 import { deleteEvent, putEvent } from './gcal';
 import { logEvent } from './notify';
+import type { ExpectedEvent } from './invariants';
 
 /**
  * Mirrors bookings onto the office's shared Google calendar.
@@ -32,11 +33,11 @@ const CLOSE_HOUR = '18:00:00';
  * the same row without us keeping a mapping table — and a retry cannot leave
  * a duplicate behind.
  */
-function eventId(bookingId: string, day: IsoDate): string {
+export function eventId(bookingId: string, day: IsoDate): string {
   return 'cht' + createHash('sha256').update(`${bookingId}:${day}`).digest('hex').slice(0, 40);
 }
 
-type BookingForCalendar = {
+export type BookingForCalendar = {
   id: string;
   reference: string;
   firstName: string;
@@ -94,6 +95,28 @@ function describe(b: BookingForCalendar): { summary: string; description: string
   return { summary, description };
 }
 
+export type PlannedEvent = ExpectedEvent & { day: IsoDate };
+
+/**
+ * The one event per day this booking should have on the office calendar.
+ *
+ * Split out of the sync so the invariant checker asks the same question the
+ * sync answers, and the two cannot drift: a dry run, a live write and a
+ * read-back audit all agree on what "correct" means.
+ */
+export function expectedEventsFor(b: BookingForCalendar): PlannedEvent[] {
+  const { summary } = describe(b);
+  const colorId = COLOR[(b.truck?.code as 'A' | 'B') ?? 'A'] ?? COLOR.A;
+  const status = UNCONFIRMED.has(b.stage) ? 'tentative' : 'confirmed';
+  return eachDay(dateToIso(b.blockStart), dateToIso(b.blockEnd)).map((day) => ({
+    id: eventId(b.id, day),
+    day,
+    summary,
+    colorId,
+    status,
+  }));
+}
+
 /**
  * Put the booking on the calendar, creating or correcting one event per day.
  *
@@ -122,22 +145,21 @@ export async function syncBookingToCalendar(
       }
     }
 
-    const { summary, description } = describe(b);
-    const colorId = COLOR[(b.truck?.code as 'A' | 'B') ?? 'A'] ?? COLOR.A;
+    const { description } = describe(b);
 
     const failures: string[] = [];
-    for (const day of days) {
+    for (const planned of expectedEventsFor(b)) {
       const res = await putEvent(config.gcal.calendarId, {
-        id: eventId(bookingId, day),
-        summary,
+        id: planned.id,
+        summary: planned.summary,
         description,
-        start: `${day}T${OPEN_HOUR}`,
-        end: `${day}T${CLOSE_HOUR}`,
+        start: `${planned.day}T${OPEN_HOUR}`,
+        end: `${planned.day}T${CLOSE_HOUR}`,
         timeZone: config.timeZone,
-        colorId,
-        status: UNCONFIRMED.has(b.stage) ? 'tentative' : 'confirmed',
+        colorId: planned.colorId,
+        status: planned.status as 'tentative' | 'confirmed',
       });
-      if (!res.ok) failures.push(`${day}: ${res.error}`);
+      if (!res.ok) failures.push(`${planned.day}: ${res.error}`);
     }
 
     if (failures.length) {

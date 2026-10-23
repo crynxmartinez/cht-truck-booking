@@ -159,6 +159,35 @@ export async function putEvent(calendarId: string, event: GcalEvent): Promise<Gc
   return created;
 }
 
+/** One event as Google holds it — just the fields an audit compares. */
+export type StoredEvent = { id: string; summary: string; colorId?: string; status?: string };
+
+/**
+ * Read events back from the calendar. This is what makes an audit independent:
+ * it asks Google what is there, rather than trusting what we meant to write.
+ */
+export async function listEvents(
+  calendarId: string,
+  timeMinIso: string,
+  timeMaxIso: string,
+): Promise<GcalResult<StoredEvent[]>> {
+  const out: StoredEvent[] = [];
+  let pageToken = '';
+  do {
+    const qs =
+      `singleEvents=true&showDeleted=false&maxResults=250&timeMin=${enc(timeMinIso)}&timeMax=${enc(timeMaxIso)}` +
+      (pageToken ? `&pageToken=${enc(pageToken)}` : '');
+    const res = await call<{ items?: StoredEvent[]; nextPageToken?: string }>(
+      'GET',
+      `/calendars/${enc(calendarId)}/events?${qs}`,
+    );
+    if (!res.ok) return res;
+    out.push(...(res.data.items ?? []));
+    pageToken = res.data.nextPageToken ?? '';
+  } while (pageToken);
+  return { ok: true, data: out };
+}
+
 export async function deleteEvent(calendarId: string, eventId: string): Promise<GcalResult<null>> {
   const res = await call<null>('DELETE', `/calendars/${enc(calendarId)}/events/${enc(eventId)}`);
   // Already gone is the state we wanted.

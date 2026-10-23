@@ -51,6 +51,16 @@ export async function approveContract(contractId: string) {
   if (contract.status !== 'SIGNED') throw new ApprovalError('The renter has not signed this yet.');
   if (contract.counterSignedAt) return { alreadySigned: true, bookingId: contract.booking.id };
 
+  // Confirming sets the stage, so approving a cancelled or finished booking
+  // would quietly bring it back as Confirmed — and, with a truck that may since
+  // have been re-let, put it back on days someone else now holds.
+  if (contract.booking.stage === Stage.CANCELLED) {
+    throw new ApprovalError('This booking was cancelled, so it cannot be approved. Reopen it first.');
+  }
+  if (contract.booking.stage === Stage.COMPLETED) {
+    throw new ApprovalError('This booking is already closed, so it cannot be approved.');
+  }
+
   await prisma.contract.update({
     where: { id: contractId },
     data: {

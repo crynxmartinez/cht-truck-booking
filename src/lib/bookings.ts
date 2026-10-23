@@ -3,6 +3,8 @@ import { prisma } from './db';
 import { logEvent, notifyStaff, setStage } from './notify';
 import { markPurgeEligible } from './storage';
 import { newToken } from './tokens';
+import { NoTruckAvailableError } from './availability';
+import { isOverlapViolation } from './overlap-guard';
 import { removeBookingFromCalendar, syncBookingToCalendar } from './calendar-sync';
 
 /**
@@ -52,10 +54,21 @@ export async function cancelBooking(bookingId: string, reason: string, actor = '
 
 /** Put a cancelled or auto-released booking back in play. */
 export async function reopenBooking(bookingId: string, actor = 'system') {
-  await prisma.booking.update({
-    where: { id: bookingId },
-    data: { stage: Stage.CONTRACT_SENT, cancelledAt: null, cancelledReason: null },
-  });
+  try {
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { stage: Stage.CONTRACT_SENT, cancelledAt: null, cancelledReason: null },
+    });
+  } catch (err) {
+    // A cancelled booking gave its truck up, and the next renter may have it now.
+    // Reopening used to re-enter the same days unchecked and double-book it.
+    if (isOverlapViolation(err)) {
+      throw new NoTruckAvailableError(
+        'That truck has since been booked on those dates, so this booking cannot be reopened. Move it to the other truck or other dates first.',
+      );
+    }
+    throw err;
+  }
   await logEvent(bookingId, 'reopened', 'Booking reopened', actor);
   await syncBookingToCalendar(bookingId);
 }

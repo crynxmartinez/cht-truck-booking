@@ -319,3 +319,21 @@ npm run build
 
 The CRM's **Settings** page reports whether the database, GoHighLevel, Blob, the cron
 secret, the widget origins and the inbound webhook are all actually wired up.
+
+## Swapping trucks, and keeping the system honest
+
+Moving a booking to the other truck is a button in the booking window. The
+step-by-step is in [`docs/guides/swap-a-booking.md`](docs/guides/swap-a-booking.md).
+
+| Command | What it does |
+|---|---|
+| `npm run swap:preview -- <last name> [truck]` | Rehearse a swap: shows what the renter and Diana would be sent. Sends and changes nothing. |
+| `npm run check:invariants` | Read-only audit of the live database and Google Calendar. Exits non-zero if anything is inconsistent. |
+| `npm run guard:apply` | Rehearse installing the overlap guard. Add `-- --apply` to install it. Idempotent. |
+| `npm run guard:verify` | Proves the overlap guard with two real database connections, on its own throwaway table. |
+| `npm test` / `npm run test:coverage` | The test suite (unit, property-based, mocked-database). |
+
+The database refuses two bookings holding one truck on the same day
+(`bookings_no_overlap`, a Postgres exclusion constraint). Prisma does not know
+about it; if anyone runs `prisma db push`, run `npm run check:invariants`
+afterwards and `npm run guard:apply -- --apply` if it reports the guard missing.

@@ -11,6 +11,7 @@ import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import type { TemplateKey } from '@/lib/messages';
 import { dateToIso, isoToDate, isIsoDate, todayInOps } from '@/lib/dates';
 import { syncBookingToCalendar } from '@/lib/calendar-sync';
+import { OVERLAP_MESSAGE, isOverlapViolation } from '@/lib/overlap-guard';
 import { isEmail, toE164 } from '@/lib/http';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -29,12 +30,31 @@ function done(message?: string): ActionResult {
 
 // ---------------------------------------------------------------- bookings
 
+/**
+ * Turns "the truck is taken" into something to tell a person. Moving a card or
+ * reopening a booking can put it back into the days another renter now holds;
+ * the database refuses that, and neither path used to say so — it just failed.
+ */
+function truckTaken(err: unknown): ActionResult | null {
+  if (err instanceof NoTruckAvailableError) return { ok: false, error: err.message };
+  if (isOverlapViolation(err)) {
+    return { ok: false, error: `${OVERLAP_MESSAGE} Move it to the other truck or other dates first.` };
+  }
+  return null;
+}
+
 export async function moveStage(bookingId: string, stage: Stage): Promise<ActionResult> {
   const who = await actor();
-  if (stage === Stage.COMPLETED) {
-    await completeBooking(bookingId, who);
-  } else {
-    await setStage(bookingId, stage, who, 'Moved by hand');
+  try {
+    if (stage === Stage.COMPLETED) {
+      await completeBooking(bookingId, who);
+    } else {
+      await setStage(bookingId, stage, who, 'Moved by hand');
+    }
+  } catch (err) {
+    const refusal = truckTaken(err);
+    if (refusal) return refusal;
+    throw err;
   }
   return done('Stage updated.');
 }
@@ -103,7 +123,13 @@ export async function cancel(bookingId: string, reason: string): Promise<ActionR
 
 export async function reopen(bookingId: string): Promise<ActionResult> {
   const who = await actor();
-  await reopenBooking(bookingId, who);
+  try {
+    await reopenBooking(bookingId, who);
+  } catch (err) {
+    const refusal = truckTaken(err);
+    if (refusal) return refusal;
+    throw err;
+  }
   return done('Booking reopened.');
 }
 

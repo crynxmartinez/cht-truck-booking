@@ -13,6 +13,7 @@ import {
   todayInOps,
 } from './dates';
 import { checkSwap } from './truck-swap';
+import { OVERLAP_MESSAGE, isOverlapViolation } from './overlap-guard';
 
 /** Stages that still hold a truck. A cancelled booking frees its dates. */
 export const HOLDING_STAGES: Stage[] = [
@@ -98,6 +99,26 @@ export async function getAvailability(from: IsoDate, to: IsoDate): Promise<DayAv
   return out;
 }
 
+/**
+ * prisma.$transaction, except that a refusal from the database's overlap guard
+ * becomes the same plain NoTruckAvailableError the app-level check raises. The
+ * app checks under a lock first, so the guard only fires if something slipped
+ * past — a path that forgot to ask, or two writers racing in a way the lock
+ * did not cover. `message: null` keeps the customer-facing default wording.
+ */
+async function guardedTransaction<T>(
+  run: (tx: Prisma.TransactionClient) => Promise<T>,
+  options: { isolationLevel: Prisma.TransactionIsolationLevel; timeout: number },
+  message: string | null = OVERLAP_MESSAGE,
+): Promise<T> {
+  try {
+    return await prisma.$transaction(run, options);
+  } catch (err) {
+    if (isOverlapViolation(err)) throw new NoTruckAvailableError(message ?? undefined);
+    throw err;
+  }
+}
+
 export class NoTruckAvailableError extends Error {
   constructor(message = 'That date was taken while you were filling in the form. Please pick another.') {
     super(message);
@@ -134,7 +155,7 @@ export async function createBookingWithTruck(input: {
 }) {
   const w = rentalWindow(input.pickupDate, input.days ?? config.rentalBlockDays);
 
-  return prisma.$transaction(
+  return guardedTransaction(
     async (tx) => {
       // Serialise every concurrent booking attempt behind the same row locks.
       await tx.$queryRaw`SELECT id FROM trucks WHERE active = true ORDER BY code ASC FOR UPDATE`;
@@ -206,6 +227,7 @@ export async function createBookingWithTruck(input: {
       });
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 },
+    null,
   );
 }
 
@@ -228,7 +250,7 @@ export class SwapNotAllowedError extends Error {
  * say "A to B" without re-reading it.
  */
 export async function reassignTruck(bookingId: string, truckId: string) {
-  return prisma.$transaction(async (tx) => {
+  return guardedTransaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM trucks WHERE active = true ORDER BY code ASC FOR UPDATE`;
     // The booking row too. cancelBooking and setStage never take the truck lock,
     // so without this a swap that read CONFIRMED could commit just after a
@@ -306,7 +328,7 @@ export async function reassignTruck(bookingId: string, truckId: string) {
 export async function rescheduleBooking(bookingId: string, newPickup: IsoDate, days: number) {
   const span = Math.max(1, Math.min(days, 30));
 
-  return prisma.$transaction(async (tx) => {
+  return guardedTransaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM trucks WHERE active = true ORDER BY code ASC FOR UPDATE`;
 
     const booking = await tx.booking.findUniqueOrThrow({

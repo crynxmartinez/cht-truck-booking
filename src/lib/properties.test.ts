@@ -170,13 +170,17 @@ describe('pickup-day schedule — simulated across a whole day', () => {
 });
 
 describe('findOverlaps — property', () => {
-  const holding = ['NEW_BOOKING', 'CONFIRMED', 'IN_USE', 'RETURNED'];
+  // Restated here on purpose, not imported: the spec is "these eight stages hold a truck".
+  const holding = [
+    'NEW_BOOKING', 'CONTRACT_SENT', 'ADDITIONAL_DRIVER', 'AWAITING_APPROVAL',
+    'CONFIRMED', 'PICKUP_DAY', 'IN_USE', 'RETURNED',
+  ];
 
   const booking = fc.record({
     truck: fc.constantFrom('A', 'B', null),
     start: fc.integer({ min: 0, max: 20 }),
     len: fc.integer({ min: 1, max: 5 }),
-    stage: fc.constantFrom('CONFIRMED', 'NEW_BOOKING', 'IN_USE', 'CANCELLED', 'COMPLETED'),
+    stage: fc.constantFrom(...ALL_STAGES),
   });
 
   it('agrees with a plain brute-force check, for any set of bookings', () => {

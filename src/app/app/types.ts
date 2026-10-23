@@ -74,6 +74,9 @@ export type EventData = {
   atLabel: string;
 };
 
+/** Another truck this booking could move to, and whether it is free for the dates. */
+export type SwapOption = { id: string; code: string; free: boolean; note: string | null };
+
 export type BookingDetail = {
   card: CardData;
   rentalDays: number;
@@ -86,6 +89,8 @@ export type BookingDetail = {
   checklists: ChecklistData[];
   messages: MessageData[];
   events: EventData[];
+  /** Empty unless the booking is accepted and its pickup day has not arrived. */
+  swap: SwapOption[];
 };
 
 export type TruckOption = { id: string; code: string };

@@ -1,8 +1,10 @@
 import { prisma } from '@/lib/db';
-import { dateToIso, formatMedium, formatStamp } from '@/lib/dates';
+import { dateToIso, formatMedium, formatStamp, todayInOps } from '@/lib/dates';
+import { freeTrucksFor } from '@/lib/availability';
+import { swapWindowOpen } from '@/lib/truck-swap';
 import { checklistUrl, signUrl } from '@/lib/tokens';
 import { signedFilePath } from '@/lib/file-urls';
-import type { BookingDetail, CardData } from './types';
+import type { BookingDetail, CardData, SwapOption } from './types';
 
 /**
  * Shared booking loader. The board and the calendar open the same modal, so
@@ -52,6 +54,37 @@ export function toCard(b: BookingRow): CardData {
 }
 
 
+/**
+ * The trucks this booking could move to, if it can move at all.
+ *
+ * Only switched-on trucks are offered. Availability is read for the booking's
+ * own dates; the booking itself sits on its current truck, so it can never
+ * make another truck look busy.
+ */
+async function swapOptionsFor(args: {
+  stage: string;
+  pickupIso: string;
+  rentalDays: number;
+  currentTruckId: string | null;
+}): Promise<SwapOption[]> {
+  const window = swapWindowOpen({ stage: args.stage, pickupDate: args.pickupIso, today: todayInOps() });
+  if (!window.ok) return [];
+
+  const [others, availability] = await Promise.all([
+    prisma.truck.findMany({
+      where: { active: true, ...(args.currentTruckId ? { id: { not: args.currentTruckId } } : {}) },
+      select: { id: true, code: true },
+      orderBy: { code: 'asc' },
+    }),
+    freeTrucksFor(args.pickupIso, args.rentalDays),
+  ]);
+
+  return others.map((t) => {
+    const busy = availability.taken.find((x) => x.code === t.code);
+    return { id: t.id, code: t.code, free: !busy, note: busy ? busy.reason : null };
+  });
+}
+
 /** Loads the full file for one booking. Called from the board when a card opens. */
 export async function loadBookingDetail(id: string): Promise<BookingDetail | null> {
   const b = await prisma.booking.findUnique({
@@ -72,8 +105,16 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
   const rentalDays =
     Math.round((b.blockEnd.getTime() - b.blockStart.getTime()) / 86_400_000) + 1;
 
+  const swap = await swapOptionsFor({
+    stage: b.stage,
+    pickupIso,
+    rentalDays,
+    currentTruckId: b.truckId,
+  });
+
   return {
     card: toCard(b),
+    swap,
     rentalDays,
     pickupIso,
     reviewNote: b.reviewNote,

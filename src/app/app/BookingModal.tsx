@@ -8,7 +8,7 @@ import {
   addNote, approveChecklistAction, approveContractAction, cancel, changeDates,
   clearFlags, moveStage, reopen, resend, switchTruck,
 } from './actions';
-import type { BookingDetail, TruckOption } from './types';
+import type { BookingDetail } from './types';
 import { StaffDropoffUpload } from './StaffDropoffUpload';
 
 const RESENDABLE: Array<{ key: string; label: string }> = [
@@ -21,11 +21,9 @@ const RESENDABLE: Array<{ key: string; label: string }> = [
 
 export function BookingModal({
   detail,
-  trucks,
   onClose,
 }: {
   detail: BookingDetail;
-  trucks: TruckOption[];
   onClose: () => void;
 }) {
   const c = detail.card;
@@ -182,21 +180,42 @@ export function BookingModal({
             </button>
           )}
 
-          {trucks.length > 1 ? (
+          {/* Empty unless accepted and pickup day has not arrived — the rule is
+              decided on the server, so this never offers what it would refuse. */}
+          {detail.swap.length > 0 ? (
             <>
-              <div className="sect">Swap truck</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {trucks.map((t) => (
+              <div className="sect">Move to the other truck</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {detail.swap.map((t) => (
                   <button
                     key={t.id}
-                    className={t.id === c.truckId ? 'btn primary small' : 'btn ghost small'}
-                    disabled={pending || t.id === c.truckId}
-                    onClick={() => run(() => switchTruck(c.id, t.id))}
+                    className="btn ghost small"
+                    disabled={pending || !t.free}
+                    onClick={() => {
+                      const from = c.truckCode ? `Truck ${c.truckCode}` : 'no truck';
+                      if (
+                        window.confirm(
+                          `Move ${c.name} from ${from} to Truck ${t.code}?\n\nThey will be told by text and email.`,
+                        )
+                      ) {
+                        run(() => switchTruck(c.id, t.id));
+                      }
+                    }}
                   >
-                    Truck {t.code}
+                    Move to Truck {t.code}
                   </button>
                 ))}
               </div>
+              {detail.swap
+                .filter((t) => !t.free)
+                .map((t) => (
+                  <p key={t.id} className="tiny" style={{ marginTop: 8 }}>
+                    Truck {t.code} is out on these dates — {t.note}.
+                  </p>
+                ))}
+              <p className="tiny" style={{ marginTop: 8 }}>
+                The renter is told. The signed agreement still lists the original truck&rsquo;s plate.
+              </p>
             </>
           ) : null}
 

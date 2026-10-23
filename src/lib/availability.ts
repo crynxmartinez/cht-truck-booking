@@ -10,7 +10,9 @@ import {
   latestBookable,
   overlaps,
   rentalWindow,
+  todayInOps,
 } from './dates';
+import { checkSwap } from './truck-swap';
 
 /** Stages that still hold a truck. A cancelled booking frees its dates. */
 export const HOLDING_STAGES: Stage[] = [
@@ -207,15 +209,49 @@ export async function createBookingWithTruck(input: {
   );
 }
 
+export class SwapNotAllowedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SwapNotAllowedError';
+  }
+}
+
 /**
- * Move a confirmed booking onto the other truck. Used from the CRM when the
- * office wants B instead of A. Refuses if the target is not actually free.
+ * Move an accepted booking onto the other truck.
+ *
+ * The rule — accepted, pickup not yet arrived, target switched on — is checked
+ * here, inside the same locked transaction as the clash test, rather than only
+ * behind the button. A stale screen or a second admin could otherwise move a
+ * booking whose renter already holds the other truck's lockbox code.
+ *
+ * Returns the updated booking plus the truck it came from, so the caller can
+ * say "A to B" without re-reading it.
  */
 export async function reassignTruck(bookingId: string, truckId: string) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM trucks WHERE active = true ORDER BY code ASC FOR UPDATE`;
+    // The booking row too. cancelBooking and setStage never take the truck lock,
+    // so without this a swap that read CONFIRMED could commit just after a
+    // cancel and tell the renter about a truck on a booking that no longer
+    // exists. Locked BEFORE the read, so what we read is what we write against.
+    await tx.$queryRaw`SELECT id FROM bookings WHERE id = ${bookingId} FOR UPDATE`;
 
-    const booking = await tx.booking.findUniqueOrThrow({ where: { id: bookingId } });
+    const booking = await tx.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: { truck: true },
+    });
+
+    const target = await tx.truck.findUnique({ where: { id: truckId } });
+    if (!target) throw new NoTruckAvailableError('That truck does not exist.');
+
+    const verdict = checkSwap({
+      stage: booking.stage,
+      pickupDate: dateToIso(booking.pickupDate),
+      today: todayInOps(),
+      currentTruckId: booking.truckId,
+      target: { id: target.id, code: target.code, active: target.active },
+    });
+    if (!verdict.ok) throw new SwapNotAllowedError(verdict.reason);
 
     const clash = await tx.booking.findFirst({
       where: {
@@ -234,11 +270,12 @@ export async function reassignTruck(bookingId: string, truckId: string) {
     });
     if (blackout) throw new NoTruckAvailableError('That truck is blacked out for those dates.');
 
-    return tx.booking.update({
+    const updated = await tx.booking.update({
       where: { id: bookingId },
       data: { truckId },
       include: { truck: true },
     });
+    return { ...updated, previousTruckCode: booking.truck?.code ?? null };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 });
 }
 

@@ -14,6 +14,7 @@ export type TemplateKey =
   | 'contract_nudge'
   | 'additional_driver'
   | 'dates_changed'
+  | 'truck_changed'
   | 'rental_confirmed'
   | 'pickup_morning'
   | 'pickup_reminder'
@@ -44,6 +45,12 @@ export type MessageContext = {
 };
 
 const SIGNOFF = 'Diana\nCory Home Team';
+
+/** 6 -> "6 AM", 14 -> "2 PM". The pickup text hour is configurable, so copy must not hard-code it. */
+export function hourLabel(hour: number): string {
+  const h = ((hour % 24) + 24) % 24;
+  return `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
+}
 
 export function render(key: TemplateKey, c: MessageContext): Rendered {
   const pickup = formatLong(c.pickupDate);
@@ -132,6 +139,32 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
         sms:
           `Hi ${c.additionalDriverName ?? 'there'}, ${c.renterName ?? 'someone'} listed you as an additional ` +
           `driver on a Cory Home Team truck rental for ${pickup}. Sign here: ${sign} — Diana`,
+      };
+
+    case 'truck_changed':
+      return {
+        subject: `Your truck for ${pickup} has changed`,
+        email: [
+          `Hi ${c.firstName},`,
+          ``,
+          `A quick change to your booking: your rental is now on ${truck}.`,
+          ``,
+          `Pickup:   ${pickup}`,
+          `Due back: ${back}`,
+          ``,
+          `Everything else is unchanged — same dates, same pickup at ${addr}.`,
+          `You will still get a text at ${hourLabel(config.pickupSmsHour)} on the day with the lockbox code for ${truck}.`,
+          ``,
+          `Your signed rental agreement was issued for the earlier truck's plate and year; we have`,
+          `noted the change on your booking.`,
+          ``,
+          `If anything looks wrong, just reply.`,
+          ``,
+          SIGNOFF,
+        ].join('\n'),
+        sms:
+          `Hi ${c.firstName}, a quick change: your Cory Home Team truck rental on ${c.pickupDate} ` +
+          `is now on ${truck}. Same dates and pickup spot; your lockbox code comes by text at ${hourLabel(config.pickupSmsHour)} that day. — Diana`,
       };
 
     case 'dates_changed':

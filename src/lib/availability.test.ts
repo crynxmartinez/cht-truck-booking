@@ -100,3 +100,44 @@ describe('reassignTruck — the guard lives with the data, not just the button',
     expect(updateBooking).not.toHaveBeenCalled();
   });
 });
+
+describe('reassignTruck — locking and boundaries', () => {
+  it('locks the trucks and then the booking row, before reading the booking', async () => {
+    await reassignTruck('b1', 'truck-b');
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    const lastLock = Math.max(...queryRaw.mock.invocationCallOrder);
+    expect(lastLock).toBeLessThan(findBooking.mock.invocationCallOrder[0]);
+  });
+
+  it('refuses a booking that is already on that truck, at the data layer too', async () => {
+    findTruck.mockResolvedValue({ id: 'truck-a', code: 'A', active: true });
+    await expect(reassignTruck('b1', 'truck-a')).rejects.toThrow(/already on Truck A/);
+    expect(updateBooking).not.toHaveBeenCalled();
+  });
+
+  it('looks for a clash on the target truck, ignoring this booking itself', async () => {
+    await reassignTruck('b1', 'truck-b');
+    expect(findClash).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { not: 'b1' },
+          truckId: 'truck-b',
+          blockStart: { lte: day('2026-10-27') },
+          blockEnd: { gte: day('2026-10-25') },
+        }),
+      }),
+    );
+  });
+
+  it('still counts the 24th as ahead at 10:30 PM on the 23rd at the yard, though UTC has rolled over', async () => {
+    vi.setSystemTime(new Date('2026-10-24T05:30:00Z')); // 22:30 PDT on the 23rd
+    accepted({ pickupDate: day('2026-10-24'), blockStart: day('2026-10-24'), blockEnd: day('2026-10-26') });
+    await expect(reassignTruck('b1', 'truck-b')).resolves.toBeDefined();
+  });
+
+  it('treats the 24th as arrived once it is 1 AM there', async () => {
+    vi.setSystemTime(new Date('2026-10-24T08:00:00Z')); // 01:00 PDT on the 24th
+    accepted({ pickupDate: day('2026-10-24'), blockStart: day('2026-10-24'), blockEnd: day('2026-10-26') });
+    await expect(reassignTruck('b1', 'truck-b')).rejects.toBeInstanceOf(SwapNotAllowedError);
+  });
+});

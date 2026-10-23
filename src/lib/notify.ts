@@ -312,6 +312,10 @@ export async function notifyStaff(
   bookingId: string,
   event: StaffEvent,
   extra: Partial<StaffContext> = {},
+  // Staff rows are deduplicated per booking and event, so a second legitimate
+  // truck swap or reschedule would otherwise be silently dropped. Forcing
+  // resends it, the same way the renter's copy already does.
+  options: { force?: boolean } = {},
 ): Promise<void> {
   if (!config.staff.notifyEnabled) return;
 
@@ -367,6 +371,7 @@ export async function notifyStaff(
           phone: p.phone,
         },
         body,
+        force: options.force,
         resolveContact: () => recipientContactId(p),
       });
     }

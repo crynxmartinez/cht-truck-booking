@@ -20,6 +20,7 @@ export type StaffEvent =
   | 'reschedule_requested'
   | 'overdue'
   | 'dates_changed'
+  | 'truck_changed'
   | 'cancelled';
 
 export type StaffContext = {
@@ -115,6 +116,14 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
         `Dates moved — ${who}, ${truck}`,
         `${who}'s rental has been moved to ${pickup} - ${back}${c.detail ? ` (${c.detail})` : ''}. They have been told.`,
         `DATES MOVED · ${who} · ${truck} · now ${pickup}. Renter notified.`,
+      );
+
+    case 'truck_changed':
+      return wrap(
+        `Truck changed — ${who}, ${truck}, ${pickup}`,
+        `${who}'s ${pickup} rental has been moved${c.detail ? ` (${c.detail})` : ''}. The renter has been told. ` +
+          `Note: the signed agreement still lists the previous truck's plate and year.`,
+        `TRUCK CHANGED · ${who} · now ${truck} · ${pickup}. Renter notified.`,
       );
 
     case 'confirmed':

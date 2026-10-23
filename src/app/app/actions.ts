@@ -5,7 +5,7 @@ import { after } from 'next/server';
 import { Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
-import { reassignTruck, NoTruckAvailableError } from '@/lib/availability';
+import { reassignTruck, NoTruckAvailableError, SwapNotAllowedError } from '@/lib/availability';
 import { cancelBooking, completeBooking, reopenBooking } from '@/lib/bookings';
 import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import type { TemplateKey } from '@/lib/messages';
@@ -42,14 +42,46 @@ export async function moveStage(bookingId: string, stage: Stage): Promise<Action
 export async function switchTruck(bookingId: string, truckId: string): Promise<ActionResult> {
   const who = await actor();
   try {
-    const updated = await reassignTruck(bookingId, truckId);
-    await logEvent(bookingId, 'truck_reassigned', `Moved to Truck ${updated.truck?.code}`, who);
+    const moved = await reassignTruck(bookingId, truckId);
+    const from = moved.previousTruckCode ? `Truck ${moved.previousTruckCode}` : 'no truck';
+    const to = `Truck ${moved.truck?.code}`;
+
+    // The signed agreement is a stored PDF naming the old truck's plate and
+    // year. It cannot change, so the log is where the substitution is recorded.
+    await logEvent(
+      bookingId,
+      'truck_reassigned',
+      `Moved from ${from} to ${to}. The signed agreement still lists the previous truck's plate.`,
+      who,
+    );
     // Same days, different truck — the title and colour on the office calendar
     // have to follow, or they load the wrong van.
     await syncBookingToCalendar(bookingId);
-    return done(`Moved to Truck ${updated.truck?.code}.`);
+
+    // After the response: two sends over GoHighLevel is seconds of waiting.
+    // Forced, because the same booking can legitimately change truck twice.
+    after(async () => {
+      try {
+        const renter = await notify(bookingId, 'truck_changed', { force: true });
+        await notifyStaff(bookingId, 'truck_changed', { detail: `${from} to ${to}` }, { force: true });
+        // notify() reports a failed send in its result rather than throwing, so
+        // without this a GoHighLevel outage would leave no trace at all.
+        if (renter.errors.length > 0) {
+          await logEvent(bookingId, 'notify_failed', `Truck change: ${renter.errors.join('; ')}`, 'system');
+        }
+      } catch (err) {
+        console.error('truck change notify failed', err);
+        await logEvent(bookingId, 'notify_failed', String(err), 'system');
+      }
+    });
+
+    // Sent after the response, so say so honestly rather than "has been told".
+    return done(`Moved to ${to}. The renter and Diana are being told.`);
   } catch (err) {
-    if (err instanceof NoTruckAvailableError) return { ok: false, error: err.message };
+    if (err instanceof NoTruckAvailableError || err instanceof SwapNotAllowedError) {
+      return { ok: false, error: err.message };
+    }
+    console.error('switchTruck failed', err);
     return { ok: false, error: 'Could not move that booking.' };
   }
 }
@@ -343,7 +375,7 @@ export async function changeDates(
     // Tell the renter and the office. A silent move means somebody turns up on
     // the wrong day.
     await notify(bookingId, 'dates_changed', { force: true });
-    await notifyStaff(bookingId, 'dates_changed', { detail: reason || null });
+    await notifyStaff(bookingId, 'dates_changed', { detail: reason || null }, { force: true });
     // `from` is what makes this a move: the days it no longer covers get cleared.
     await syncBookingToCalendar(bookingId, res.from);
 

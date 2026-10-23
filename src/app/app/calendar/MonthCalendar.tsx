@@ -300,7 +300,7 @@ export function MonthCalendar({
         />
       ) : null}
 
-      {open ? <BookingModal detail={open} trucks={trucks} onClose={() => setOpen(null)} /> : null}
+      {open ? <BookingModal detail={open} onClose={() => setOpen(null)} /> : null}
     </>
   );
 }

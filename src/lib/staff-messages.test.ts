@@ -25,3 +25,11 @@ describe('truck_changed — what Diana is told', () => {
     expect(m.email.toLowerCase()).toContain('signed');
   });
 });
+
+describe('truck_changed — without a detail', () => {
+  it('reads cleanly rather than printing an empty pair of brackets', () => {
+    const m = renderStaff('truck_changed', { ...base, detail: null });
+    expect(m.email).not.toContain('()');
+    expect(m.email).not.toContain('null');
+  });
+});

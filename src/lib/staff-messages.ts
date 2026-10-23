@@ -122,7 +122,7 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
       return wrap(
         `Truck changed — ${who}, ${truck}, ${pickup}`,
         `${who}'s ${pickup} rental has been moved${c.detail ? ` (${c.detail})` : ''}. The renter has been told. ` +
-          `Note: the signed agreement still lists the previous truck's plate and year.`,
+          `If the renter had already signed, the agreement still lists the previous truck's plate and year.`,
         `TRUCK CHANGED · ${who} · now ${truck} · ${pickup}. Renter notified.`,
       );
 

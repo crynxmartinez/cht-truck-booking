@@ -8,6 +8,7 @@ function swap(over: Partial<SwapCheck> = {}): SwapCheck {
     stage: 'CONFIRMED',
     pickupDate: '2026-10-25',
     today: TODAY,
+    codeSent: false,
     currentTruckId: 'truck-a',
     target: { id: 'truck-b', code: 'B', active: true },
     ...over,
@@ -16,41 +17,51 @@ function swap(over: Partial<SwapCheck> = {}): SwapCheck {
 
 const reasonOf = (v: ReturnType<typeof checkSwap>) => (v.ok ? '' : v.reason);
 
-describe('checkSwap — accepted bookings whose pickup has not arrived', () => {
-  it('allows an accepted booking onto another active truck', () => {
-    expect(checkSwap(swap())).toEqual({ ok: true });
-  });
+describe('checkSwap — any booking before its booking period', () => {
+  it.each(['NEW_BOOKING', 'CONTRACT_SENT', 'ADDITIONAL_DRIVER', 'AWAITING_APPROVAL', 'CONFIRMED'])(
+    'allows a %s booking whose pickup is still ahead',
+    (stage) => {
+      expect(checkSwap(swap({ stage })).ok).toBe(true);
+    },
+  );
 
-  it.each(['2026-10-24', '2026-10-25', '2026-12-31'])('allows a pickup on %s, still ahead', (pickupDate) => {
+  it.each(['2026-10-24', '2026-10-31', '2026-12-31'])('allows a pickup on %s', (pickupDate) => {
     expect(checkSwap(swap({ pickupDate })).ok).toBe(true);
   });
 
-  it('refuses once pickup day has arrived — the code may already be out', () => {
-    const v = checkSwap(swap({ pickupDate: TODAY }));
+  it('refuses a pickup date that has already passed', () => {
+    const v = checkSwap(swap({ pickupDate: '2026-10-20' }));
     expect(v.ok).toBe(false);
-    expect(reasonOf(v).toLowerCase()).toContain('pickup');
+    expect(reasonOf(v).toLowerCase()).toContain('passed');
   });
 
-  it('refuses a pickup date in the past', () => {
-    expect(checkSwap(swap({ pickupDate: '2026-10-20' })).ok).toBe(false);
+  it.each(['PICKUP_DAY', 'IN_USE', 'RETURNED', 'COMPLETED', 'CANCELLED'])(
+    'refuses a %s booking — the rental has started or finished',
+    (stage) => {
+      const v = checkSwap(swap({ stage }));
+      expect(v.ok).toBe(false);
+      expect(reasonOf(v).toLowerCase()).toContain('started or finished');
+    },
+  );
+});
+
+describe('checkSwap — the day itself', () => {
+  it('allows a pickup that is today while the lockbox code has not gone out', () => {
+    expect(checkSwap(swap({ pickupDate: TODAY, codeSent: false })).ok).toBe(true);
   });
 
-  it.each([
-    'NEW_BOOKING',
-    'CONTRACT_SENT',
-    'ADDITIONAL_DRIVER',
-    'AWAITING_APPROVAL',
-    'PICKUP_DAY',
-    'IN_USE',
-    'RETURNED',
-    'COMPLETED',
-    'CANCELLED',
-  ])('refuses a booking that is %s — only accepted ones can move', (stage) => {
-    const v = checkSwap(swap({ stage }));
+  it('refuses a pickup that is today once the code is out — the renter holds the wrong truck’s code', () => {
+    const v = checkSwap(swap({ pickupDate: TODAY, codeSent: true }));
     expect(v.ok).toBe(false);
-    expect(reasonOf(v).toLowerCase()).toContain('accepted');
+    expect(reasonOf(v).toLowerCase()).toContain('code');
   });
 
+  it('does not care about the code for a future pickup', () => {
+    expect(checkSwap(swap({ pickupDate: '2026-10-25', codeSent: true })).ok).toBe(true);
+  });
+});
+
+describe('checkSwap — the target truck', () => {
   it('refuses moving onto the truck it is already on', () => {
     const v = checkSwap(swap({ currentTruckId: 'truck-b' }));
     expect(v.ok).toBe(false);
@@ -70,12 +81,18 @@ describe('checkSwap — accepted bookings whose pickup has not arrived', () => {
 });
 
 describe('swapWindowOpen — decides whether to show the option at all', () => {
-  it('is open for an accepted booking before pickup', () => {
-    expect(swapWindowOpen({ stage: 'CONFIRMED', pickupDate: '2026-10-25', today: TODAY })).toEqual({ ok: true });
+  const win = { stage: 'AWAITING_APPROVAL', pickupDate: '2026-10-31', today: TODAY, codeSent: false };
+
+  it('is open before the booking period', () => {
+    expect(swapWindowOpen(win)).toEqual({ ok: true });
   });
 
-  it('is closed on pickup day and for any other stage', () => {
-    expect(swapWindowOpen({ stage: 'CONFIRMED', pickupDate: TODAY, today: TODAY }).ok).toBe(false);
-    expect(swapWindowOpen({ stage: 'AWAITING_APPROVAL', pickupDate: '2026-10-25', today: TODAY }).ok).toBe(false);
+  it('is open today until the code goes out, then closed', () => {
+    expect(swapWindowOpen({ ...win, pickupDate: TODAY }).ok).toBe(true);
+    expect(swapWindowOpen({ ...win, pickupDate: TODAY, codeSent: true }).ok).toBe(false);
+  });
+
+  it('is closed once the rental has started', () => {
+    expect(swapWindowOpen({ ...win, stage: 'IN_USE' }).ok).toBe(false);
   });
 });

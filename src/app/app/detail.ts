@@ -62,12 +62,26 @@ export function toCard(b: BookingRow): CardData {
  * make another truck look busy.
  */
 async function swapOptionsFor(args: {
+  bookingId: string;
   stage: string;
   pickupIso: string;
   rentalDays: number;
   currentTruckId: string | null;
 }): Promise<SwapOption[]> {
-  const window = swapWindowOpen({ stage: args.stage, pickupDate: args.pickupIso, today: todayInOps() });
+  const today = todayInOps();
+  // Only the day itself cares whether the code is out; skip the query otherwise.
+  const codeSent =
+    args.pickupIso === today &&
+    (await prisma.messageLog.count({
+      where: {
+        bookingId: args.bookingId,
+        template: 'pickup_morning',
+        recipientKey: 'renter',
+        status: { in: ['QUEUED', 'SENT'] },
+      },
+    })) > 0;
+
+  const window = swapWindowOpen({ stage: args.stage, pickupDate: args.pickupIso, today, codeSent });
   if (!window.ok) return [];
 
   const [others, availability] = await Promise.all([
@@ -106,6 +120,7 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
     Math.round((b.blockEnd.getTime() - b.blockStart.getTime()) / 86_400_000) + 1;
 
   const swap = await swapOptionsFor({
+    bookingId: b.id,
     stage: b.stage,
     pickupIso,
     rentalDays,

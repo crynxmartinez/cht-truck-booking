@@ -78,7 +78,7 @@ describe('truck_changed — the renter is told when their truck changes', () => 
 
 describe('truck_changed — the renter is told about their signed agreement', () => {
   it('says the agreement was issued for the earlier truck, so the lockbox is not the first they hear of it', () => {
-    const m = render('truck_changed', { ...ctx, truckCode: 'B' });
+    const m = render('truck_changed', { ...ctx, truckCode: 'B', agreementSigned: true });
     expect(m.email.toLowerCase()).toContain('signed rental agreement');
     expect(m.email.toLowerCase()).toContain('earlier truck');
   });
@@ -93,5 +93,13 @@ describe('hourLabel — the pickup text hour is configurable, so copy must not h
     [23, '11 PM'],
   ])('%i -> %s', (hour, label) => {
     expect(hourLabel(hour)).toBe(label);
+  });
+});
+
+describe('truck_changed — only mentions a signed agreement if there is one', () => {
+  it.each([false, undefined])('says nothing about it when agreementSigned is %s', (agreementSigned) => {
+    const m = render('truck_changed', { ...ctx, truckCode: 'B', agreementSigned });
+    expect(m.email.toLowerCase()).not.toContain('signed rental agreement');
+    expect(m.email.toLowerCase()).not.toContain('earlier truck');
   });
 });

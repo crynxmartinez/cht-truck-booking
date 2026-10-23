@@ -1,11 +1,11 @@
 /**
  * When may a booking be moved to the other truck?
  *
- * Only once it has been accepted, and only until its pickup day arrives.
- * Before acceptance the truck is still being assigned automatically; from
- * pickup day on, the lockbox code (which differs per truck) may already be in
- * the renter's hands, and once they have collected it the truck is physically
- * with them.
+ * Any time before its booking period — and on the first day too, right up
+ * until the lockbox code goes out. The code is what makes a swap unsafe: each
+ * truck has its own, so a renter who already holds the old truck's code would
+ * be standing at the wrong lockbox. Once the rental has started the truck is
+ * physically with them, and a finished or cancelled booking has nothing to move.
  *
  * Pure, so the rule can be pinned by tests and shared by the button, the
  * server action and the data layer without any of them drifting.
@@ -19,6 +19,8 @@ export type SwapWindow = {
   pickupDate: string;
   /** Today at the yard, YYYY-MM-DD */
   today: string;
+  /** The pickup-day lockbox code has been queued or sent. */
+  codeSent: boolean;
 };
 
 export type SwapCheck = SwapWindow & {
@@ -26,20 +28,30 @@ export type SwapCheck = SwapWindow & {
   target: { id: string; code: string; active: boolean };
 };
 
-const ACCEPTED = 'CONFIRMED';
+/** Stages in which the renter has not yet collected the truck. */
+const BEFORE_PICKUP = new Set([
+  'NEW_BOOKING',
+  'CONTRACT_SENT',
+  'ADDITIONAL_DRIVER',
+  'AWAITING_APPROVAL',
+  'CONFIRMED',
+]);
 
 /** Is this booking in a state where a truck swap is possible at all? */
-export function swapWindowOpen({ stage, pickupDate, today }: SwapWindow): SwapVerdict {
-  if (stage !== ACCEPTED) {
+export function swapWindowOpen({ stage, pickupDate, today, codeSent }: SwapWindow): SwapVerdict {
+  if (!BEFORE_PICKUP.has(stage)) {
     return {
       ok: false,
-      reason: 'A booking can only change trucks once it has been accepted and before its pickup day.',
+      reason: 'The rental has already started or finished, so its truck can no longer be swapped.',
     };
   }
-  if (pickupDate <= today) {
+  if (pickupDate < today) {
+    return { ok: false, reason: 'The pickup date has passed, so the truck can no longer be swapped.' };
+  }
+  if (pickupDate === today && codeSent) {
     return {
       ok: false,
-      reason: 'Pickup day has arrived, so the truck can no longer be swapped.',
+      reason: "Today's lockbox code has already gone out, so the truck can no longer be swapped.",
     };
   }
   return { ok: true };

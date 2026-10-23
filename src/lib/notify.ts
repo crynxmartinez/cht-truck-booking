@@ -74,6 +74,7 @@ export async function buildContext(bookingId: string): Promise<{ booking: Bookin
     pickupChecklistToken: pickList?.token ?? null,
     dropoffChecklistToken: dropList?.token ?? null,
     additionalDriverName: booking.additionalDriver?.name ?? null,
+    agreementSigned: rental?.status === 'SIGNED',
     renterName: `${booking.firstName} ${booking.lastName}`.trim(),
   };
 

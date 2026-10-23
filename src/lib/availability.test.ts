@@ -6,6 +6,7 @@ const findTruck = vi.fn();
 const findClash = vi.fn();
 const findBlackout = vi.fn();
 const updateBooking = vi.fn();
+const countCodes = vi.fn();
 
 const tx = {
   $queryRaw: (...a: unknown[]) => queryRaw(...a),
@@ -16,6 +17,8 @@ const tx = {
   },
   truck: { findUnique: (...a: unknown[]) => findTruck(...a) },
   blackoutDate: { findFirst: (...a: unknown[]) => findBlackout(...a) },
+  // Has this booking's pickup-day lockbox code gone out (or started going out)?
+  messageLog: { count: (...a: unknown[]) => countCodes(...a) },
 };
 
 vi.mock('./db', () => ({
@@ -48,6 +51,7 @@ beforeEach(() => {
   findTruck.mockResolvedValue({ id: 'truck-b', code: 'B', active: true });
   findClash.mockResolvedValue(null);
   findBlackout.mockResolvedValue(null);
+  countCodes.mockResolvedValue(0);
   updateBooking.mockResolvedValue({ id: 'b1', truckId: 'truck-b', truck: { code: 'B' } });
 });
 
@@ -61,7 +65,16 @@ describe('reassignTruck — the guard lives with the data, not just the button',
     expect(res.previousTruckCode).toBe('A');
   });
 
-  it.each(['NEW_BOOKING', 'CONTRACT_SENT', 'AWAITING_APPROVAL', 'PICKUP_DAY', 'IN_USE', 'CANCELLED'])(
+  it.each(['NEW_BOOKING', 'CONTRACT_SENT', 'AWAITING_APPROVAL'])(
+    'moves a %s booking too — it only has to be before its booking period',
+    async (stage) => {
+      accepted({ stage });
+      await expect(reassignTruck('b1', 'truck-b')).resolves.toBeDefined();
+      expect(updateBooking).toHaveBeenCalled();
+    },
+  );
+
+  it.each(['PICKUP_DAY', 'IN_USE', 'RETURNED', 'CANCELLED'])(
     'refuses a %s booking and changes nothing',
     async (stage) => {
       accepted({ stage });
@@ -70,10 +83,29 @@ describe('reassignTruck — the guard lives with the data, not just the button',
     },
   );
 
-  it('refuses once pickup day has arrived', async () => {
+  it('moves a booking whose pickup is today while the lockbox code has not gone out', async () => {
     accepted({ pickupDate: day('2026-10-23'), blockStart: day('2026-10-23'), blockEnd: day('2026-10-25') });
+    await expect(reassignTruck('b1', 'truck-b')).resolves.toBeDefined();
+  });
+
+  it('refuses a pickup that is today once the code is out — the renter holds the other truck’s code', async () => {
+    accepted({ pickupDate: day('2026-10-23'), blockStart: day('2026-10-23'), blockEnd: day('2026-10-25') });
+    countCodes.mockResolvedValue(1);
     await expect(reassignTruck('b1', 'truck-b')).rejects.toBeInstanceOf(SwapNotAllowedError);
     expect(updateBooking).not.toHaveBeenCalled();
+  });
+
+  it('only counts a code that was queued or sent, not one that failed', async () => {
+    accepted({ pickupDate: day('2026-10-23'), blockStart: day('2026-10-23'), blockEnd: day('2026-10-25') });
+    await reassignTruck('b1', 'truck-b');
+    const arg = countCodes.mock.calls[0][0] as { where: { template: string; status: { in: string[] } } };
+    expect(arg.where.template).toBe('pickup_morning');
+    expect([...arg.where.status.in].sort()).toEqual(['QUEUED', 'SENT']);
+  });
+
+  it('refuses a pickup date that has already passed', async () => {
+    accepted({ pickupDate: day('2026-10-22'), blockStart: day('2026-10-22'), blockEnd: day('2026-10-24') });
+    await expect(reassignTruck('b1', 'truck-b')).rejects.toBeInstanceOf(SwapNotAllowedError);
   });
 
   it('refuses a truck that is switched off', async () => {
@@ -135,8 +167,9 @@ describe('reassignTruck — locking and boundaries', () => {
     await expect(reassignTruck('b1', 'truck-b')).resolves.toBeDefined();
   });
 
-  it('treats the 24th as arrived once it is 1 AM there', async () => {
+  it('treats the 24th as today once it is 1 AM there, so a sent code now blocks it', async () => {
     vi.setSystemTime(new Date('2026-10-24T08:00:00Z')); // 01:00 PDT on the 24th
+    countCodes.mockResolvedValue(1);
     accepted({ pickupDate: day('2026-10-24'), blockStart: day('2026-10-24'), blockEnd: day('2026-10-26') });
     await expect(reassignTruck('b1', 'truck-b')).rejects.toBeInstanceOf(SwapNotAllowedError);
   });

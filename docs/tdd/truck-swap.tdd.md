@@ -1,7 +1,15 @@
 # TDD evidence: swapping a booking onto the other truck
 
-**Source:** no plan file; journeys derived in this run. The scope was set by
-the user: "swap is available for accepted but the date is not yet arrived."
+**Source:** no plan file; journeys derived in this run.
+
+**Rule, revised once.** First built as the user asked: "available for accepted
+but the date is not yet arrived." That blocked the three bookings that
+actually needed moving (all waiting on the main admin's counter-signature,
+Truck A being out of service). The user then said: nothing changes except the
+truck, available before the booking period, and "move jose too" (pickup that
+day). The rule is now: any booking not yet collected, with a pickup date that
+has not passed, and on the pickup day itself only while the lockbox code has
+not been queued or sent. The code is the real hazard — it differs per truck.
 
 ## Journeys
 
@@ -64,3 +72,14 @@ the user: "swap is available for accepted but the date is not yet arrived."
 - The signed contract PDF is not regenerated. That is deliberate and recorded
   in the activity log; the attorney question about a "comparable vehicle"
   clause is unresolved.
+
+## Revision tests (rule widened)
+
+- `truck-swap.test.ts`: all five pre-pickup stages allowed; started/finished
+  stages refused; a past date refused; pickup-today allowed until the code is
+  out, then refused; the code is irrelevant for a future pickup.
+- `availability.test.ts`: the same at the data layer, including that only a
+  QUEUED or SENT code counts (a failed one does not block), and yard-midnight.
+- `messages.test.ts`: the "your signed agreement was issued for the earlier
+  truck" line appears only when the renter has actually signed.
+- 118 of 118 pass.

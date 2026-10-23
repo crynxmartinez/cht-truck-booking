@@ -42,6 +42,8 @@ export type MessageContext = {
   dropoffChecklistToken?: string | null;
   additionalDriverName?: string | null;
   renterName?: string | null;
+  /** The renter has already signed the rental agreement. */
+  agreementSigned?: boolean;
 };
 
 const SIGNOFF = 'Diana\nCory Home Team';
@@ -155,9 +157,13 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
           `Everything else is unchanged — same dates, same pickup at ${addr}.`,
           `You will still get a text at ${hourLabel(config.pickupSmsHour)} on the day with the lockbox code for ${truck}.`,
           ``,
-          `Your signed rental agreement was issued for the earlier truck's plate and year; we have`,
-          `noted the change on your booking.`,
-          ``,
+          ...(c.agreementSigned
+            ? [
+                `Your signed rental agreement was issued for the earlier truck's plate and year; we have`,
+                `noted the change on your booking.`,
+                ``,
+              ]
+            : []),
           `If anything looks wrong, just reply.`,
           ``,
           SIGNOFF,

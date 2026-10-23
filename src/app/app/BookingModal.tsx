@@ -214,7 +214,7 @@ export function BookingModal({
                   </p>
                 ))}
               <p className="tiny" style={{ marginTop: 8 }}>
-                The renter is told. The signed agreement still lists the original truck&rsquo;s plate.
+                The renter is told. If they have already signed, their agreement still lists the original truck&rsquo;s plate.
               </p>
             </>
           ) : null}

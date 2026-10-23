@@ -51,7 +51,7 @@ export async function switchTruck(bookingId: string, truckId: string): Promise<A
     await logEvent(
       bookingId,
       'truck_reassigned',
-      `Moved from ${from} to ${to}. The signed agreement still lists the previous truck's plate.`,
+      `Moved from ${from} to ${to}. Any signed agreement still lists the previous truck's plate.`,
       who,
     );
     // Same days, different truck — the title and colour on the office calendar

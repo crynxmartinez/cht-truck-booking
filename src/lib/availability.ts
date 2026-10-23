@@ -1,4 +1,4 @@
-import { Prisma, Stage } from '@prisma/client';
+import { MessageStatus, Prisma, Stage } from '@prisma/client';
 import { prisma } from './db';
 import { config } from './config';
 import {
@@ -244,10 +244,23 @@ export async function reassignTruck(bookingId: string, truckId: string) {
     const target = await tx.truck.findUnique({ where: { id: truckId } });
     if (!target) throw new NoTruckAvailableError('That truck does not exist.');
 
+    // Has the pickup-day code started going out? Queued counts as well as sent:
+    // a send already in flight is carrying the OLD truck's code.
+    const codeSent =
+      (await tx.messageLog.count({
+        where: {
+          bookingId,
+          template: 'pickup_morning',
+          recipientKey: 'renter',
+          status: { in: [MessageStatus.QUEUED, MessageStatus.SENT] },
+        },
+      })) > 0;
+
     const verdict = checkSwap({
       stage: booking.stage,
       pickupDate: dateToIso(booking.pickupDate),
       today: todayInOps(),
+      codeSent,
       currentTruckId: booking.truckId,
       target: { id: target.id, code: target.code, active: target.active },
     });

@@ -103,3 +103,36 @@ describe('truck_changed — only mentions a signed agreement if there is one', (
     expect(m.email.toLowerCase()).not.toContain('earlier truck');
   });
 });
+
+describe('truck_changed — a swap on the pickup day itself', () => {
+  const today = render('truck_changed', { ...ctx, truckCode: 'B', pickupIsToday: true });
+  const later = render('truck_changed', { ...ctx, truckCode: 'B', pickupIsToday: false });
+
+  it('does not promise a 6 AM text that has already come and gone', () => {
+    expect(today.email).not.toContain('6 AM');
+    expect(today.sms).not.toContain('6 AM');
+  });
+
+  it('says the code will be texted today instead', () => {
+    expect(today.email.toLowerCase()).toContain('today');
+    expect(today.sms.toLowerCase()).toContain('today');
+  });
+
+  it('keeps the 6 AM promise for any other day', () => {
+    expect(later.email).toContain('6 AM');
+    expect(later.sms).toContain('6 AM');
+  });
+
+  it('still never carries a lockbox code itself', () => {
+    expect(today.email).not.toContain('48213');
+    expect(today.sms).not.toContain('48213');
+  });
+});
+
+describe('truck_changed — the text message reads like a person wrote it', () => {
+  it('uses a readable date, not 2026-10-09', () => {
+    const m = render('truck_changed', { ...ctx, truckCode: 'B' });
+    expect(m.sms).toContain('Oct 9, 2026');
+    expect(m.sms).not.toContain('2026-10-09');
+  });
+});

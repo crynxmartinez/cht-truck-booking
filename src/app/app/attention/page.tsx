@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
-import { dateToIso, formatMedium, formatStamp } from '@/lib/dates';
+import { config } from '@/lib/config';
+import { dateToIso, formatMedium, formatStamp, todayInOps } from '@/lib/dates';
+import { explainFailure, isUrgentFailure } from '@/lib/failures';
 import { STAGE_LABEL } from '@/lib/stages';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +15,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function AttentionPage() {
   const cutoff24 = new Date(Date.now() - 24 * 3600_000);
+  const today = todayInOps();
 
   const [flagged, unsigned, failed] = await Promise.all([
     prisma.booking.findMany({
@@ -33,7 +36,9 @@ export default async function AttentionPage() {
     }),
     prisma.messageLog.findMany({
       where: { status: 'FAILED' },
-      include: { booking: { select: { reference: true, firstName: true, lastName: true } } },
+      include: {
+        booking: { select: { reference: true, firstName: true, lastName: true, stage: true, pickupDate: true } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 25,
     }),
@@ -104,7 +109,8 @@ export default async function AttentionPage() {
           <div className="panel">
             <h2>Unsigned over 24 hours</h2>
             <div className="hint">
-              These are being nudged automatically and release themselves after 72 hours.
+              Each gets one automatic reminder, and the truck is released if it is still unsigned after{' '}
+              {config.unsignedReleaseHours} hours. The renter is not told when that happens.
             </div>
             <div className="tablewrap">
               <table className="datatable">
@@ -141,8 +147,9 @@ export default async function AttentionPage() {
           <div className="panel">
             <h2>Messages that failed</h2>
             <div className="hint">
-              Usually a GoHighLevel scope or a missing phone number. Open the booking on the{' '}
-              <Link href="/app">board</Link> and resend once it is fixed.
+              Each row says why it failed and what to do. To read exactly what was meant to be sent, open the
+              booking on the <Link href="/app">board</Link> and click the message. A text that is blocked
+              because the person opted out, or has Do Not Disturb on, can never be sent from here: call them.
             </div>
             <div className="tablewrap">
               <table className="datatable">
@@ -150,25 +157,47 @@ export default async function AttentionPage() {
                   <tr>
                     <th>Renter</th>
                     <th>Message</th>
-                    <th>Via</th>
-                    <th>Error</th>
+                    <th>What happened, and what to do</th>
                     <th>When</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {failed.map((m) => (
-                    <tr key={m.id}>
-                      <td>
-                        {m.booking.firstName} {m.booking.lastName}
-                        <br />
-                        <span className="tiny">{m.booking.reference}</span>
-                      </td>
-                      <td>{m.template.replace(/_/g, ' ')}</td>
-                      <td>{m.channel.toLowerCase()}</td>
-                      <td className="tiny">{m.error?.slice(0, 120)}</td>
-                      <td>{formatStamp(m.createdAt)}</td>
-                    </tr>
-                  ))}
+                  {failed.map((m) => {
+                    const why = explainFailure(m.error, m.channel);
+                    const urgent = isUrgentFailure({
+                      channel: m.channel,
+                      template: m.template,
+                      stage: m.booking.stage,
+                      pickupIso: dateToIso(m.booking.pickupDate),
+                      todayIso: today,
+                    });
+                    return (
+                      <tr key={m.id}>
+                        <td>
+                          {m.booking.firstName} {m.booking.lastName}
+                          <br />
+                          <span className="tiny">{m.booking.reference}</span>
+                        </td>
+                        <td>
+                          {m.template.replace(/_/g, ' ')}
+                          <br />
+                          <span className="tiny">{m.channel.toLowerCase()}</span>
+                        </td>
+                        <td>
+                          {urgent ? (
+                            <span className="tag red">Call them now: they have not got their lockbox code</span>
+                          ) : null}
+                          <div className="tiny" style={{ marginTop: urgent ? 6 : 0 }}>
+                            {why.reason}
+                          </div>
+                          <div className="tiny">
+                            <b>{why.action}</b>
+                          </div>
+                        </td>
+                        <td>{formatStamp(m.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

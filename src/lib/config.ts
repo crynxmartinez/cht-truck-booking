@@ -41,9 +41,9 @@ export const BASELINE = {
   returnSmsHour: num('RETURN_SMS_HOUR', 7),
   dailySweepHour: num('DAILY_SWEEP_HOUR', 9),
   unsignedReleaseHours: num('UNSIGNED_RELEASE_HOURS', 72),
-  completedHideDays: 14,
+  completedHideDays: 14 as number,
   // Off unless somebody turns it on: nothing is deleted automatically.
-  storageDeletionEnabled: false,
+  storageDeletionEnabled: false as boolean,
   blobQuotaGb: Math.max(1, Math.round(envQuotaBytes / GIB)),
   purgeStartPct: num('BLOB_PURGE_START_PCT', 80),
   idDocsDays: num('RETAIN_ID_DOCS_DAYS', 30),
@@ -119,8 +119,9 @@ export const config = {
   blob: {
     /** The plan size, in bytes. An office-set size in GB wins over the environment. */
     get quotaBytes() {
-      const gb = override('blobQuotaGb', BASELINE.blobQuotaGb);
-      return gb === BASELINE.blobQuotaGb ? envQuotaBytes : gb * GIB;
+      // -1 can never be a stored size, so it means "the office has not set one".
+      const gb = override('blobQuotaGb', -1);
+      return gb === -1 ? envQuotaBytes : gb * GIB;
     },
     /** Nothing is deleted automatically unless this is switched on. */
     get deletionEnabled() {

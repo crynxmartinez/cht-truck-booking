@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
 import { cleanString, clientIp, json, rateLimit } from '@/lib/http';
 import { blobConfigured, normaliseImage, recordDocument, storeFile } from '@/lib/storage';
+import { loadSettings } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,6 +23,7 @@ const STAFF_SOURCES = new Set<DocumentSource>([
 
 /** One return photo at a time; the CRM sends several requests sequentially. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  await loadSettings();
   const { id: bookingId } = await params;
   const limit = rateLimit(`staff-dropoff-upload:${clientIp(req)}`, 80, 10 * 60_000);
   if (!limit.ok) return json({ error: 'Too many uploads. Wait a moment and try again.' }, { status: 429 });

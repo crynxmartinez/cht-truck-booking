@@ -3,11 +3,13 @@ import { prisma } from '@/lib/db';
 import { completeChecklist, MissingChecklistEvidenceError } from '@/lib/checklist-completion';
 import { cleanString, clientIp, json, rateLimit } from '@/lib/http';
 import { logEvent } from '@/lib/notify';
+import { loadSettings } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  await loadSettings();
   const { id: bookingId } = await params;
   const limit = rateLimit(`staff-dropoff-finalize:${clientIp(req)}`, 30, 10 * 60_000);
   if (!limit.ok) return json({ error: 'Too many attempts. Wait a moment and try again.' }, { status: 429 });

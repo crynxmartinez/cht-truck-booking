@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { saveSettingsAction, type SettingsResult } from './actions';
 
 export type SettingRow = {
@@ -34,6 +34,15 @@ export function SettingsEditor({ rows }: { rows: SettingRow[] }) {
   );
   const [result, setResult] = useState<SettingsResult | null>(null);
   const [pending, start] = useTransition();
+
+  // After a save or a put-back the page is re-rendered with what is now stored.
+  // The form must follow it, or it keeps showing the old value and offers to
+  // save that value again as if it were a fresh change.
+  const stored = JSON.stringify(rows.map((r) => [r.key, r.value]));
+  useEffect(() => {
+    setValues(Object.fromEntries(rows.map((r) => [r.key, r.value])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stored]);
 
   const dirty = rows.filter((r) => values[r.key] !== r.value);
   const groups = Array.from(new Set(rows.map((r) => r.group)));

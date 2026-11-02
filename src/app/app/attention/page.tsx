@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
+import { loadSettings } from '@/lib/settings';
 import { dateToIso, formatMedium, formatStamp, todayInOps } from '@/lib/dates';
 import { explainFailure, isUrgentFailure } from '@/lib/failures';
 import { STAGE_LABEL } from '@/lib/stages';
@@ -14,6 +15,7 @@ export const dynamic = 'force-dynamic';
  * stay visible in the stage it is stuck in.
  */
 export default async function AttentionPage() {
+  await loadSettings();
   const cutoff24 = new Date(Date.now() - 24 * 3600_000);
   const today = todayInOps();
 

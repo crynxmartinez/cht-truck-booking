@@ -39,6 +39,7 @@ function groups(c: NavCounts): Group[] {
     {
       title: 'System',
       items: [
+        { href: '/app/messages', label: 'Messages' },
         { href: '/app/notifications', label: 'Notifications', count: c.pendingSigs || undefined },
         { href: '/app/storage', label: 'Storage' },
         { href: '/app/settings', label: 'Settings' },

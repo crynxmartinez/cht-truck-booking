@@ -3,10 +3,12 @@ import { config } from '@/lib/config';
 import { CardHeader, DeadLink, PageFooter } from '@/components/Brand';
 import { ChecklistFlow } from '@/components/ChecklistFlow';
 import { buildSteps } from '@/lib/checklist-steps';
+import { loadSettings } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ChecklistPage({ params }: { params: Promise<{ token: string }> }) {
+  await loadSettings();
   const { token } = await params;
 
   const checklist = await prisma.checklist.findUnique({

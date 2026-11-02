@@ -13,11 +13,14 @@ import { dateToIso, isoToDate, isIsoDate, todayInOps } from '@/lib/dates';
 import { syncBookingToCalendar } from '@/lib/calendar-sync';
 import { OVERLAP_MESSAGE, isOverlapViolation } from '@/lib/overlap-guard';
 import { isEmail, toE164 } from '@/lib/http';
+import { loadSettings } from '@/lib/settings';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
 /** The CRM has no login, so every action is recorded as the office itself. */
 async function actor() {
+  // Every CRM action starts here, so it sees the settings the office last saved.
+  await loadSettings();
   return 'ops';
 }
 

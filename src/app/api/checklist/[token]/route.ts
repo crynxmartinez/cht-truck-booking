@@ -2,6 +2,7 @@ import { ChecklistCompletionSource } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { cleanString, clientIp, isEmail, json, rateLimit } from '@/lib/http';
 import { completeChecklist, MissingChecklistEvidenceError } from '@/lib/checklist-completion';
+import { loadSettings } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,9 @@ export const dynamic = 'force-dynamic';
  * the thank-you; the retention clock only starts once the office marks the
  * booking Completed, so photos are never purged while a claim is open.
  */
+
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  await loadSettings();
   const { token } = await params;
 
   const limit = rateLimit(`checklist:${clientIp(req)}`, 30, 10 * 60_000);

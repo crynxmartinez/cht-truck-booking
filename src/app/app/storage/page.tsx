@@ -1,7 +1,10 @@
+import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
 import { blobConfigured, measureUsage } from '@/lib/storage';
 import { formatStamp } from '@/lib/dates';
+import { loadSettings } from '@/lib/settings';
+import { STORAGE_URGENT_PCT, STORAGE_WARN_PCT } from '@/lib/storage-alert';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +14,7 @@ function mb(bytes: number) {
 }
 
 export default async function StoragePage() {
+  await loadSettings({ force: true });
   const connected = blobConfigured();
 
   const [byKind, pending, deleted] = await Promise.all([
@@ -58,8 +62,19 @@ export default async function StoragePage() {
         <div className="panel">
           <h2>Usage</h2>
           <div className="hint">
-            The nightly job starts deleting once usage passes {config.blob.purgeStartPct}%, and keeps going
-            until it is back under {config.blob.purgeTargetPct}%.
+            {config.blob.deletionEnabled ? (
+              <>
+                <b>Deleting is on.</b> Once usage passes {config.blob.purgeStartPct}%, the oldest photos from
+                finished rentals are deleted until it is back under {config.blob.purgeTargetPct}%.
+              </>
+            ) : (
+              <>
+                <b>Deleting is off, so nothing is ever deleted automatically.</b> You will be emailed at{' '}
+                {STORAGE_WARN_PCT}% and again at {STORAGE_URGENT_PCT}%, and a warning shows on every page. If it
+                fills completely, renters cannot upload their licence photos.
+              </>
+            )}{' '}
+            Change this under <Link href="/app/settings">Settings</Link>.
           </div>
 
           <div className="gauge">
@@ -95,9 +110,11 @@ export default async function StoragePage() {
                     <td className="tiny">
                       {r.kind === 'SIGNED_CONTRACT'
                         ? 'Never deleted — legal record'
-                        : r.kind === 'DRIVER_LICENSE' || r.kind === 'INSURANCE'
-                          ? `${config.retention.idDocsDays} days`
-                          : `${config.retention.checklistPhotoDays} days`}
+                        : !config.blob.deletionEnabled
+                          ? 'Kept, because deleting is off'
+                          : r.kind === 'DRIVER_LICENSE' || r.kind === 'INSURANCE'
+                            ? `${config.retention.idDocsDays} days`
+                            : `${config.retention.checklistPhotoDays} days`}
                     </td>
                   </tr>
                 ))}
@@ -112,18 +129,20 @@ export default async function StoragePage() {
             </table>
           </div>
           <p className="tiny" style={{ marginTop: 12 }}>
-            {pending} file{pending === 1 ? '' : 's'} past their retention date and eligible for the next
-            purge &middot; {deleted} already purged. Files on an open, overdue or flagged booking are never
-            eligible, whatever the storage level.
+            {config.blob.deletionEnabled
+              ? `${pending} file${pending === 1 ? '' : 's'} past their retention date and eligible for the next clean-up`
+              : `${pending} file${pending === 1 ? ' is' : 's are'} past the retention dates set under Settings, but deleting is off, so they are kept`}{' '}
+            &middot; {deleted} deleted so far. Files on an open, overdue or flagged booking are never eligible, and
+            signed contracts are never deleted.
           </p>
         </div>
 
         <div className="panel">
-          <h2>Adjusting the quota</h2>
+          <h2>Adjusting the size</h2>
           <div className="hint" style={{ marginBottom: 0 }}>
-            <code>BLOB_QUOTA_BYTES</code> is currently {mb(config.blob.quotaBytes)}. Set it to whatever your
-            Vercel plan actually includes, otherwise the 80% rule is measuring against the wrong number.
-            Last checked {formatStamp(new Date())}.
+            Storage is measured against {mb(config.blob.quotaBytes)}. If your Vercel plan includes more, set the
+            real size under <Link href="/app/settings">Settings</Link>, otherwise the warnings measure against the
+            wrong number. Last checked {formatStamp(new Date())}.
           </div>
         </div>
       </div>

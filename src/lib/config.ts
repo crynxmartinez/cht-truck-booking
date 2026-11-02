@@ -20,42 +20,115 @@ function str(key: string, fallback: string): string {
   return process.env[key]?.trim() || fallback;
 }
 
+import { override } from './settings-store';
+import type { SettingKey } from './settings-catalog';
+
+const GIB = 1024 ** 3;
+const envQuotaBytes = num('BLOB_QUOTA_BYTES', 1_073_741_824);
+
+/**
+ * What each office-editable setting is when nobody has changed it: the
+ * environment variable if one is set, otherwise the built-in value. The
+ * Settings page shows these as the default a reset goes back to.
+ */
+export const BASELINE = {
+  minLeadDays: num('MIN_LEAD_DAYS', 1),
+  maxMonthsAhead: num('MAX_MONTHS_AHEAD', 3),
+  pickupSmsHour: num('PICKUP_SMS_HOUR', 6),
+  pickupReminderHour: num('PICKUP_REMINDER_HOUR', 10),
+  noPickupCheckHour: num('NO_PICKUP_CHECK_HOUR', 14),
+  pickupLastHour: num('PICKUP_LAST_REMINDER_HOUR', 19),
+  returnSmsHour: num('RETURN_SMS_HOUR', 7),
+  dailySweepHour: num('DAILY_SWEEP_HOUR', 9),
+  unsignedReleaseHours: num('UNSIGNED_RELEASE_HOURS', 72),
+  completedHideDays: 14,
+  // Off unless somebody turns it on: nothing is deleted automatically.
+  storageDeletionEnabled: false,
+  blobQuotaGb: Math.max(1, Math.round(envQuotaBytes / GIB)),
+  purgeStartPct: num('BLOB_PURGE_START_PCT', 80),
+  idDocsDays: num('RETAIN_ID_DOCS_DAYS', 30),
+  checklistPhotoDays: num('RETAIN_CHECKLIST_PHOTOS_DAYS', 90),
+  pickupFuelGauge: bool('CHECKLIST_PICKUP_FUEL_GAUGE', false),
+  exteriorPhotos: bool('CHECKLIST_EXTERIOR_PHOTOS', false),
+} as const satisfies Record<SettingKey, number | boolean>;
+
 export const config = {
   appUrl: str('NEXT_PUBLIC_APP_URL', 'http://localhost:3000').replace(/\/$/, ''),
 
   /** Truck is unavailable for this many calendar days starting on the pickup date. */
   rentalBlockDays: num('RENTAL_BLOCK_DAYS', 3),
-  minLeadDays: num('MIN_LEAD_DAYS', 1),
-  maxMonthsAhead: num('MAX_MONTHS_AHEAD', 3),
+  get minLeadDays() {
+    return override('minLeadDays', BASELINE.minLeadDays);
+  },
+  get maxMonthsAhead() {
+    return override('maxMonthsAhead', BASELINE.maxMonthsAhead);
+  },
 
   timeZone: str('OPS_TIMEZONE', 'America/Los_Angeles'),
   pickupAddress: str('PICKUP_ADDRESS', '25220 Hancock Ave, Murrieta, CA 92562'),
 
-  pickupSmsHour: num('PICKUP_SMS_HOUR', 6),
-  returnSmsHour: num('RETURN_SMS_HOUR', 7),
-  noPickupCheckHour: num('NO_PICKUP_CHECK_HOUR', 14),
+  get pickupSmsHour() {
+    return override('pickupSmsHour', BASELINE.pickupSmsHour);
+  },
+  get returnSmsHour() {
+    return override('returnSmsHour', BASELINE.returnSmsHour);
+  },
+  get noPickupCheckHour() {
+    return override('noPickupCheckHour', BASELINE.noPickupCheckHour);
+  },
   /** Second pickup message, sent only while the pickup checklist is outstanding. */
-  pickupReminderHour: num('PICKUP_REMINDER_HOUR', 10),
+  get pickupReminderHour() {
+    return override('pickupReminderHour', BASELINE.pickupReminderHour);
+  },
   /** Pickup reminders stop after this hour. */
-  pickupLastHour: num('PICKUP_LAST_REMINDER_HOUR', 19),
-  dailySweepHour: num('DAILY_SWEEP_HOUR', 9),
+  get pickupLastHour() {
+    return override('pickupLastHour', BASELINE.pickupLastHour);
+  },
+  get dailySweepHour() {
+    return override('dailySweepHour', BASELINE.dailySweepHour);
+  },
+
+  /** Finished rentals leave the Board after this many days. They are never deleted. */
+  get completedHideDays() {
+    return override('completedHideDays', BASELINE.completedHideDays);
+  },
 
   /** A truck held by an unsigned contract is released after this long. */
-  unsignedReleaseHours: num('UNSIGNED_RELEASE_HOURS', 72),
+  get unsignedReleaseHours() {
+    return override('unsignedReleaseHours', BASELINE.unsignedReleaseHours);
+  },
 
   checklist: {
-    pickupFuelGauge: bool('CHECKLIST_PICKUP_FUEL_GAUGE', false),
-    exteriorPhotos: bool('CHECKLIST_EXTERIOR_PHOTOS', false),
+    get pickupFuelGauge() {
+      return override('pickupFuelGauge', BASELINE.pickupFuelGauge);
+    },
+    get exteriorPhotos() {
+      return override('exteriorPhotos', BASELINE.exteriorPhotos);
+    },
   },
 
   retention: {
-    idDocsDays: num('RETAIN_ID_DOCS_DAYS', 30),
-    checklistPhotoDays: num('RETAIN_CHECKLIST_PHOTOS_DAYS', 90),
+    get idDocsDays() {
+      return override('idDocsDays', BASELINE.idDocsDays);
+    },
+    get checklistPhotoDays() {
+      return override('checklistPhotoDays', BASELINE.checklistPhotoDays);
+    },
   },
 
   blob: {
-    quotaBytes: num('BLOB_QUOTA_BYTES', 1_073_741_824),
-    purgeStartPct: num('BLOB_PURGE_START_PCT', 80),
+    /** The plan size, in bytes. An office-set size in GB wins over the environment. */
+    get quotaBytes() {
+      const gb = override('blobQuotaGb', BASELINE.blobQuotaGb);
+      return gb === BASELINE.blobQuotaGb ? envQuotaBytes : gb * GIB;
+    },
+    /** Nothing is deleted automatically unless this is switched on. */
+    get deletionEnabled() {
+      return override('storageDeletionEnabled', BASELINE.storageDeletionEnabled);
+    },
+    get purgeStartPct() {
+      return override('purgeStartPct', BASELINE.purgeStartPct);
+    },
     purgeTargetPct: num('BLOB_PURGE_TARGET_PCT', 70),
   },
 

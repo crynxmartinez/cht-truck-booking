@@ -1,14 +1,49 @@
-import { config } from '@/lib/config';
+import { BASELINE, config } from '@/lib/config';
 import { ping } from '@/lib/ghl';
 import { ping as gcalPing } from '@/lib/gcal';
 import { blobAuthMode, blobConfigured } from '@/lib/storage';
 import { earliestBookable, hourInOps, latestBookable, todayInOps } from '@/lib/dates';
 import { TERMS_VERSION } from '@/lib/contract-terms';
+import { SETTINGS, formatSetting } from '@/lib/settings-catalog';
+import { isOverridden, override } from '@/lib/settings-store';
+import { loadSettings, recentChanges } from '@/lib/settings';
+import { hourLabel } from '@/lib/messages';
+import { formatStamp } from '@/lib/dates';
+import { SettingsEditor, type SettingRow } from './SettingsEditor';
 
 export const dynamic = 'force-dynamic';
 
 /** A single page that answers "is this thing actually wired up?" */
 export default async function SettingsPage() {
+  await loadSettings({ force: true });
+  const history = await recentChanges(30);
+  const rows: SettingRow[] = SETTINGS.map((def) => {
+    const fallback = BASELINE[def.key];
+    const current = override(def.key, fallback);
+    const hours =
+      def.unit === 'hour'
+        ? Array.from({ length: (def.max ?? 0) - (def.min ?? 0) + 1 }, (_, i) => {
+            const h = (def.min ?? 0) + i;
+            return { value: String(h), label: hourLabel(h) };
+          })
+        : null;
+    return {
+      key: def.key,
+      group: def.group,
+      label: def.label,
+      help: def.help,
+      kind: def.kind,
+      unit: def.unit ?? null,
+      min: def.min ?? null,
+      max: def.max ?? null,
+      value: String(current),
+      defaultValue: String(fallback),
+      defaultLabel: formatSetting(def.key, fallback),
+      hours,
+      changed: isOverridden(def.key, fallback),
+    };
+  });
+
   const ghl = config.ghl.enabled ? await ping() : null;
   const gcal = config.gcal.enabled ? await gcalPing() : null;
 
@@ -112,62 +147,40 @@ export default async function SettingsPage() {
         </div>
 
         <div className="panel">
-          <h2>Operating rules</h2>
-          <div className="hint">
-            Changed through environment variables in Vercel, then redeploy. Nothing here is edited in the app,
-            so a mis-click can never change how the calendar behaves.
+          <h2>Change how the system behaves</h2>
+          <div className="hint" style={{ marginBottom: 0 }}>
+            Change a value and press Save. Each one only accepts a sensible range, and the times must make sense
+            together (the reminder after the first text, and so on). Every change is written to the history at the
+            bottom of this page, and you can always put one back to the usual setting. Times are yard time,{' '}
+            {config.timeZone.replace('_', ' ')}.
           </div>
+        </div>
+
+        <SettingsEditor rows={rows} />
+
+        <div className="panel">
+          <h2>Fixed rules</h2>
+          <div className="hint">These are not changed from here, because changing them affects bookings already made.</div>
           <div className="tablewrap">
             <table className="datatable">
               <tbody>
                 <tr>
                   <td>Block length</td>
                   <td>
-                    {config.rentalBlockDays} days from pickup <span className="tiny">RENTAL_BLOCK_DAYS</span>
+                    {config.rentalBlockDays} days from pickup, counting the pickup day. The truck is free again the next
+                    day.
                   </td>
                 </tr>
                 <tr>
                   <td>Booking window</td>
                   <td>
-                    {earliestBookable()} to {latestBookable()}{' '}
-                    <span className="tiny">MIN_LEAD_DAYS / MAX_MONTHS_AHEAD</span>
+                    Today you can book {earliestBookable()} to {latestBookable()}
                   </td>
                 </tr>
                 <tr>
                   <td>Yard clock</td>
                   <td>
-                    {config.timeZone} — right now it is {String(hourInOps()).padStart(2, '0')}:00 on{' '}
-                    {todayInOps()}
-                  </td>
-                </tr>
-                <tr>
-                  <td>Pickup message</td>
-                  <td>{String(config.pickupSmsHour).padStart(2, '0')}:00 local on the pickup day</td>
-                </tr>
-                <tr>
-                  <td>Return message</td>
-                  <td>{String(config.returnSmsHour).padStart(2, '0')}:00 local on the return day</td>
-                </tr>
-                <tr>
-                  <td>Unsigned release</td>
-                  <td>{config.unsignedReleaseHours} hours</td>
-                </tr>
-                <tr>
-                  <td>Pickup fuel gauge</td>
-                  <td>
-                    <span className={config.checklist.pickupFuelGauge ? 'tag green' : 'tag'}>
-                      {config.checklist.pickupFuelGauge ? 'On' : 'Off'}
-                    </span>{' '}
-                    <span className="tiny">CHECKLIST_PICKUP_FUEL_GAUGE</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Exterior photos</td>
-                  <td>
-                    <span className={config.checklist.exteriorPhotos ? 'tag green' : 'tag'}>
-                      {config.checklist.exteriorPhotos ? 'On' : 'Off'}
-                    </span>{' '}
-                    <span className="tiny">CHECKLIST_EXTERIOR_PHOTOS</span>
+                    {config.timeZone} — right now it is {hourLabel(hourInOps())} on {todayInOps()}
                   </td>
                 </tr>
                 <tr>
@@ -188,6 +201,31 @@ export default async function SettingsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div className="panel">
+          <h2>Recent changes</h2>
+          {history.length === 0 ? (
+            <div className="hint" style={{ marginBottom: 0 }}>
+              Nothing has been changed from this page yet.
+            </div>
+          ) : (
+            <div className="tablewrap">
+              <table className="datatable">
+                <tbody>
+                  {history.map((h, i) => (
+                    <tr key={i}>
+                      <td>{formatStamp(h.at)}</td>
+                      <td>
+                        <b>{h.label}</b>: {h.from} &rarr; {h.to}
+                      </td>
+                      <td className="tiny">{h.by}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="panel">

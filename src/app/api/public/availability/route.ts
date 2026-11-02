@@ -1,6 +1,7 @@
 import { getAvailability } from '@/lib/availability';
 import { isIsoDate, todayInOps, addDays, latestBookable } from '@/lib/dates';
 import { json, preflight, clientIp, rateLimit } from '@/lib/http';
+import { loadSettings } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +19,9 @@ export async function OPTIONS(req: Request) {
  * Truck ids are deliberately not exposed — the public has no business knowing
  * which vehicle is free, only whether a date can be booked.
  */
+
 export async function GET(req: Request) {
+  await loadSettings();
   const origin = req.headers.get('origin');
 
   const limit = rateLimit(`avail:${clientIp(req)}`, 120, 60_000);

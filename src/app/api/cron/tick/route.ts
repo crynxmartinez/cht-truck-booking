@@ -3,9 +3,12 @@ import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
 import { addDays, hourInOps, isoToDate, todayInOps } from '@/lib/dates';
 import { isAuthorisedCron } from '@/lib/auth';
+import { loadSettings } from '@/lib/settings';
 import { json } from '@/lib/http';
 import { logEvent, notify, notifyStaff } from '@/lib/notify';
 import { purgeAbandonedDrafts, purgeToTarget, reconcileOrphanBlobs } from '@/lib/storage';
+import { storageSweep } from '@/lib/storage-alert';
+import { runStorageCheck } from '@/lib/storage-check';
 import { cancelBooking } from '@/lib/bookings';
 import { sendDuePickupMessage } from '@/lib/pickup-release';
 
@@ -24,6 +27,9 @@ export const maxDuration = 300;
  */
 export async function GET(req: Request) {
   if (!isAuthorisedCron(req)) return json({ error: 'Unauthorised' }, { status: 401 });
+
+  // The hours and limits the office chose, not just the built-in ones.
+  await loadSettings({ force: true });
 
   const url = new URL(req.url);
   const forceJob = url.searchParams.get('job'); // manual trigger for testing
@@ -163,28 +169,15 @@ async function dailySweep(today: string) {
   }
   out.closed = toClose.length;
 
-  // --- uploads from bookings nobody ever completed
-  // Deleted outright rather than queued behind the quota rule: these are ID
-  // documents belonging to someone who never became a customer.
-  try {
-    out.abandonedDrafts = await purgeAbandonedDrafts(7);
-  } catch (err) {
-    out.abandonedDrafts = { error: String(err) };
-  }
-
   // --- storage
-  try {
-    // Reconcile first: a blob whose row was cascade-deleted is invisible to the
-    // quota-driven purge, so it would otherwise sit there forever.
-    out.orphanBlobs = await reconcileOrphanBlobs();
-  } catch (err) {
-    out.orphanBlobs = { error: String(err) };
-  }
-  try {
-    out.storage = await purgeToTarget();
-  } catch (err) {
-    out.storage = { error: String(err) };
-  }
+  // Everything that deletes a file sits behind one switch, off by default, so
+  // nothing is removed unless the office has turned deleting on. The reading
+  // and the 70% / 90% warnings run either way.
+  Object.assign(
+    out,
+    await storageSweep(config.blob.deletionEnabled, { purgeAbandonedDrafts, reconcileOrphanBlobs, purgeToTarget }),
+  );
+  out.storageCheck = await runStorageCheck();
 
   return out;
 }

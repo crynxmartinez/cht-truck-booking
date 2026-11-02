@@ -411,3 +411,45 @@ export async function setStage(bookingId: string, stage: Stage, actor = 'system'
   });
   return stage;
 }
+
+/**
+ * An alert about the system rather than a booking, such as storage filling up.
+ *
+ * Goes to everyone on the notification list, by email, plus a text to anyone
+ * who has texts on when `urgent`. MessageLog hangs off a booking, so these
+ * are not logged per message; the caller records that it alerted, so it does
+ * not repeat itself. Never throws.
+ */
+export async function notifyOffice(
+  subject: string,
+  text: string,
+  options: { urgent?: boolean; sms?: string } = {},
+): Promise<{ sent: number; failed: number }> {
+  const result = { sent: 0, failed: 0 };
+  if (!config.staff.notifyEnabled || !config.ghl.enabled) return result;
+
+  try {
+    const people = await activeRecipients();
+    for (const p of people) {
+      const contact = await recipientContactId(p);
+      if ('error' in contact) {
+        result.failed += 1;
+        continue;
+      }
+      if (p.notifyEmail) {
+        const res = await sendEmail(contact.contactId, subject, { text, html: toHtml(text) });
+        if (res.ok) result.sent += 1;
+        else result.failed += 1;
+      }
+      if (options.sms && (p.notifySms || options.urgent)) {
+        const res = await sendSms(contact.contactId, options.sms);
+        if (res.ok) result.sent += 1;
+        else result.failed += 1;
+      }
+    }
+  } catch (err) {
+    console.error('office alert failed', subject, err);
+    result.failed += 1;
+  }
+  return result;
+}

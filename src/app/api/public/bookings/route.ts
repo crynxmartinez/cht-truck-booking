@@ -9,6 +9,7 @@ import { cleanString, clientIp, isEmail, json, preflight, rateLimit, toE164 } fr
 import { newReference } from '@/lib/tokens';
 import { adoptDraftDocuments } from '@/lib/storage';
 import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
+import { loadSettings } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,7 +27,9 @@ export async function OPTIONS(req: Request) {
  * unguessable token. Messaging happens after the row is committed so a GHL
  * outage can never lose somebody's booking.
  */
+
 export async function POST(req: Request) {
+  await loadSettings();
   const origin = req.headers.get('origin');
   const ip = clientIp(req);
 

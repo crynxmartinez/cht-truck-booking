@@ -40,7 +40,7 @@ export default async function NotificationsPage() {
               <tbody>
                 <tr><td>New booking</td><td className="tiny">Form in, truck assigned, agreement sent</td></tr>
                 <tr><td>Second driver named</td><td className="tiny">Renter added one — they get their own agreement</td></tr>
-                <tr><td><b>Needs your signature</b></td><td className="tiny">Renter signed. Nothing reaches them until the main admin counter-signs</td></tr>
+                <tr><td><b>Needs Approval</b></td><td className="tiny">Renter signed. Nothing reaches them until the main admin counter-signs</td></tr>
                 <tr><td>Confirmed</td><td className="tiny">Counter-signed — the renter has now been told</td></tr>
                 <tr><td>Picked up</td><td className="tiny">Pickup checklist and photos submitted</td></tr>
                 <tr><td>Returned</td><td className="tiny">Return checklist in, including any note they left</td></tr>

@@ -110,7 +110,7 @@ export function MonthCalendar({
     const title =
       s.kind === 'blackout'
         ? `Truck ${s.truck} blocked — ${s.sublabel ?? ''}`
-        : `${s.label} · Truck ${s.truck ?? '?'} · ${pretty(s.start)} to ${pretty(s.end)}${s.unsigned ? ' · awaiting your signature' : ''}`;
+        : `${s.label} · Truck ${s.truck ?? '?'} · ${pretty(s.start)} to ${pretty(s.end)}${s.unsigned ? ' · needs approval' : ''}`;
 
     const text =
       s.kind === 'blackout'
@@ -262,7 +262,7 @@ export function MonthCalendar({
         <span><i style={{ background: '#1f4fa3' }} />Truck A</span>
         <span><i style={{ background: '#995a06' }} />Truck B</span>
         <span><i style={{ background: 'repeating-linear-gradient(45deg,#6b6e73 0 4px,#7d8085 4px 8px)' }} />Blocked</span>
-        <span><i style={{ background: '#1f4fa3', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,.65)' }} />Awaiting your signature</span>
+        <span><i style={{ background: '#1f4fa3', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,.65)' }} />Needs approval</span>
         {off.a || off.b ? (
           <span>
             <i style={{ background: 'repeating-linear-gradient(45deg,#c9ccd1 0 3px,#e6e8ea 3px 6px)' }} />

@@ -106,8 +106,8 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
 
     case 'awaiting_approval':
       return wrap(
-        `Needs your signature — ${who}, ${truck}, ${pickup}`,
-        `${who} has signed for ${truck} on ${pickup}. It needs your counter-signature before they are confirmed — nothing has been sent to them yet.`,
+        `Needs approval — ${who}, ${truck}, ${pickup}`,
+        `${who} has signed for ${truck} on ${pickup}. It needs your approval before they are confirmed — nothing has been sent to them yet.`,
         `SIGN NEEDED · ${who} · ${truck} · ${pickup}. Not confirmed until you sign.`,
       );
 

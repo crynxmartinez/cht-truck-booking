@@ -48,7 +48,7 @@ export function RecipientManager({ rows }: { rows: RecipientRow[] }) {
       {!mainAdmin ? (
         <div className="note alert">
           <b>Nobody is set as main admin</b>
-          Approvals are blocked until somebody is — bookings will sit in &ldquo;Needs your signature&rdquo; and no
+          Approvals are blocked until somebody is — bookings will sit in &ldquo;Needs Approval&rdquo; and no
           renter gets confirmed.
         </div>
       ) : !mainAdmin.hasSignature ? (

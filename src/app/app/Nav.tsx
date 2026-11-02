@@ -27,6 +27,7 @@ function groups(c: NavCounts): Group[] {
         { href: '/app', label: 'Board', count: c.active },
         { href: '/app/attention', label: 'Needs attention', count: c.needsAttention || undefined },
         { href: '/app/calendar', label: 'Calendar' },
+        { href: '/app/past', label: 'Past rentals' },
       ],
     },
     {

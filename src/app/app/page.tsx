@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
-import { BOARD_STAGES } from '@/lib/stages';
+import { boardWhere, completedCutoff } from '@/lib/board-window';
+import { loadSettings } from '@/lib/settings';
 import { Board } from './Board';
 import type { BookingDetail } from './types';
 import { loadBookingDetail, toCard } from './detail';
@@ -14,9 +15,11 @@ async function loadDetail(id: string): Promise<BookingDetail | null> {
 }
 
 export default async function BoardPage() {
+  await loadSettings();
+  const cutoff = completedCutoff(new Date(), config.completedHideDays);
   const [bookings, trucks] = await Promise.all([
     prisma.booking.findMany({
-      where: { stage: { in: BOARD_STAGES } },
+      where: boardWhere(cutoff),
       include: { truck: { select: { code: true } } },
       orderBy: [{ pickupDate: 'asc' }, { createdAt: 'asc' }],
       take: 500,

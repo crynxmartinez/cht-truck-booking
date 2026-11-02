@@ -15,7 +15,7 @@ export const STAGE_META: Array<{
   { stage: Stage.PICKUP_DAY, label: 'Pickup Day', dot: '#d6001c', blurb: 'Lockbox code sent. Awaiting pickup photos.' },
   { stage: Stage.IN_USE, label: 'In Use', dot: '#c2410c', blurb: 'Truck is out on the road.' },
   { stage: Stage.RETURNED, label: 'Returned', dot: '#0891b2', blurb: 'Back and photographed. Give it a look.' },
-  { stage: Stage.COMPLETED, label: 'Completed', dot: '#6b6e73', blurb: 'Closed out. Truck released.' },
+  { stage: Stage.COMPLETED, label: 'Completed', dot: '#6b6e73', blurb: 'Closed out. Truck released. Moves to Past rentals after a while.' },
 ];
 
 export const STAGE_LABEL: Record<Stage, string> = {

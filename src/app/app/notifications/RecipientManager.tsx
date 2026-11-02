@@ -31,7 +31,8 @@ export function RecipientManager({ rows }: { rows: RecipientRow[] }) {
   const [sig, setSig] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  const mainAdmin = rows.find((r) => r.role === 'MAIN_ADMIN' && r.active);
+  const mainAdmins = rows.filter((r) => r.role === 'MAIN_ADMIN' && r.active);
+  const unsigned = mainAdmins.filter((r) => !r.hasSignature);
 
   function run(fn: () => Promise<ActionResult>, after?: () => void) {
     start(async () => {
@@ -45,24 +46,32 @@ export function RecipientManager({ rows }: { rows: RecipientRow[] }) {
     <>
       {flash ? <div className={flash.ok ? 'note ok' : 'note alert'}>{flash.ok ? flash.message : flash.error}</div> : null}
 
-      {!mainAdmin ? (
+      {mainAdmins.length === 0 ? (
         <div className="note alert">
           <b>Nobody is set as main admin</b>
           Approvals are blocked until somebody is — bookings will sit in &ldquo;Needs Approval&rdquo; and no
           renter gets confirmed.
         </div>
-      ) : !mainAdmin.hasSignature ? (
+      ) : unsigned.length === mainAdmins.length ? (
         <div className="note warn">
-          <b>{mainAdmin.name} has no signature on file</b>
+          <b>
+            {unsigned.length === 1 ? `${unsigned[0].name} has no signature on file` : 'No main admin has a signature on file'}
+          </b>
           Approvals are blocked until one is added. Use <b>Add signature</b> on their row.
+        </div>
+      ) : unsigned.length > 0 ? (
+        <div className="note warn">
+          <b>{unsigned.map((r) => r.name).join(' and ')} cannot approve yet</b>
+          They have no signature on file. Use <b>Add signature</b> on their row.
         </div>
       ) : null}
 
       <div className="panel">
         <h2>Who gets notified</h2>
         <div className="hint">
-          Everyone active here receives every alert. Only the <b>main admin</b> signs the paperwork — the rest are
-          notified only.
+          Everyone active here receives every alert. <b>Main admins</b> sign the paperwork — there can be up to 5, each
+          with their own signature. When someone approves a rental they choose who they are, and that person&rsquo;s
+          signature goes on it. Everyone else is notified only.
         </div>
 
         <div className="tablewrap">
@@ -191,9 +200,10 @@ export function RecipientManager({ rows }: { rows: RecipientRow[] }) {
                   <option value="ADMIN">Admin — notified only</option>
                   <option value="MAIN_ADMIN">Main admin — signs the paperwork</option>
                 </select>
-                {draft.role === 'MAIN_ADMIN' && mainAdmin && mainAdmin.id !== draft.id ? (
-                  <div className="tiny" style={{ marginTop: 6, color: 'var(--warn)' }}>
-                    {mainAdmin.name} is main admin today and will be moved to Admin.
+                {draft.role === 'MAIN_ADMIN' ? (
+                  <div className="tiny" style={{ marginTop: 6 }}>
+                    Also a main admin: {mainAdmins.filter((r) => r.id !== draft.id).map((r) => r.name).join(', ') || 'nobody else'}.
+                    Save, then add their signature on their row.
                   </div>
                 ) : null}
               </div>

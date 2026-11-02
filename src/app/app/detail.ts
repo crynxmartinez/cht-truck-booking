@@ -127,9 +127,16 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
     currentTruckId: b.truckId,
   });
 
+  const admins = await prisma.notificationRecipient.findMany({
+    where: { role: 'MAIN_ADMIN', active: true },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, signatureData: true },
+  });
+
   return {
     card: toCard(b),
     swap,
+    approvers: admins.map((a) => ({ id: a.id, name: a.name, hasSignature: Boolean(a.signatureData) })),
     rentalDays,
     pickupIso,
     reviewNote: b.reviewNote,

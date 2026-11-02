@@ -10,6 +10,7 @@ import {
 } from './actions';
 import type { BookingDetail } from './types';
 import { StaffDropoffUpload } from './StaffDropoffUpload';
+import { SendMessage } from './SendMessage';
 
 const RESENDABLE: Array<{ key: string; label: string }> = [
   { key: 'contract_to_sign', label: 'Contract link' },
@@ -31,6 +32,14 @@ export function BookingModal({
   const [note, setNote] = useState('');
   // Which row in "Messages sent" is open to show exactly what was sent.
   const [openMessage, setOpenMessage] = useState<number | null>(null);
+  // With several main admins, whoever approves says who they are. With one,
+  // nobody has to choose.
+  const [approverChoice, setApproverChoice] = useState('');
+  const approverId = detail.approvers.length === 1 ? detail.approvers[0].id : approverChoice;
+  const mustChoose = detail.approvers.length > 1;
+  const waitingOnApproval =
+    detail.contracts.some((k) => k.status === 'SIGNED' && !k.counterSignedLabel) ||
+    detail.checklists.some((k) => !k.counterSignedLabel && k.submitted);
   const [dates, setDates] = useState<{ start: string; days: number } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -221,6 +230,29 @@ export function BookingModal({
             </>
           ) : null}
 
+          {mustChoose && waitingOnApproval ? (
+            <div className="note" style={{ margin: '8px 0' }}>
+              <label htmlFor="approver-choice">
+                <b>Approving as</b>
+              </label>{' '}
+              <select
+                id="approver-choice"
+                value={approverChoice}
+                onChange={(e) => setApproverChoice(e.target.value)}
+                disabled={pending}
+              >
+                <option value="">Choose who you are…</option>
+                {detail.approvers.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                    {a.hasSignature ? '' : ' (no signature on file)'}
+                  </option>
+                ))}
+              </select>
+              <div className="tiny">Their signature is the one put on the agreement.</div>
+            </div>
+          ) : null}
+
           <div className="sect">Contracts</div>
           {detail.contracts.length === 0 ? (
             <p className="tiny">No contracts yet.</p>
@@ -248,8 +280,8 @@ export function BookingModal({
                         ) : k.status === 'SIGNED' ? (
                           <button
                             className="btn primary small"
-                            disabled={pending}
-                            onClick={() => run(() => approveContractAction(k.id))}
+                            disabled={pending || (mustChoose && !approverId)}
+                            onClick={() => run(() => approveContractAction(k.id, approverId || undefined))}
                           >
                             Sign &amp; approve
                           </button>
@@ -309,8 +341,8 @@ export function BookingModal({
                         ) : k.submittedLabel !== '—' && !k.submittedLabel.startsWith('opened') ? (
                           <button
                             className="btn primary small"
-                            disabled={pending}
-                            onClick={() => run(() => approveChecklistAction(k.id))}
+                            disabled={pending || (mustChoose && !approverId)}
+                            onClick={() => run(() => approveChecklistAction(k.id, approverId || undefined))}
                           >
                             Sign off
                           </button>
@@ -383,6 +415,8 @@ export function BookingModal({
               ))}
             </div>
           )}
+
+          <SendMessage bookingId={c.id} name={c.name} onResult={setFlash} />
 
           <div className="sect">Resend a message</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

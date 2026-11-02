@@ -78,6 +78,9 @@ export type EventData = {
   atLabel: string;
 };
 
+/** A main admin who can approve, so the person at the screen can say who they are. */
+export type ApproverOption = { id: string; name: string; hasSignature: boolean };
+
 /** Another truck this booking could move to, and whether it is free for the dates. */
 export type SwapOption = { id: string; code: string; free: boolean; note: string | null };
 
@@ -95,6 +98,8 @@ export type BookingDetail = {
   events: EventData[];
   /** Empty unless the booking is accepted and its pickup day has not arrived. */
   swap: SwapOption[];
+  /** The active main admins. With more than one, whoever approves picks themselves. */
+  approvers: ApproverOption[];
 };
 
 export type TruckOption = { id: string; code: string };

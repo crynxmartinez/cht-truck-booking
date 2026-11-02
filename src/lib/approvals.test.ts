@@ -4,7 +4,7 @@ const h = vi.hoisted(() => ({
   findContract: vi.fn(),
   updateContract: vi.fn(),
   countContracts: vi.fn(),
-  mainAdmin: vi.fn(),
+  mainAdmins: vi.fn(),
   setStage: vi.fn(),
   logEvent: vi.fn(),
   notify: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('./db', () => ({
   },
 }));
 vi.mock('./notify', () => ({
-  mainAdmin: h.mainAdmin,
+  mainAdmins: h.mainAdmins,
   setStage: h.setStage,
   logEvent: h.logEvent,
   notify: h.notify,
@@ -39,7 +39,7 @@ const contract = (stage: string, over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.mainAdmin.mockResolvedValue({ id: 'a1', name: 'Diana', email: 'd@x.co', signatureData: 'data:image/png;base64,xx' });
+  h.mainAdmins.mockResolvedValue([{ id: 'a1', name: 'Diana', email: 'd@x.co', signatureData: 'data:image/png;base64,xx' }]);
   h.countContracts.mockResolvedValue(0);
   h.updateContract.mockResolvedValue({});
   h.notify.mockResolvedValue({ sent: [], skipped: [], errors: [] });
@@ -72,6 +72,49 @@ describe('approveContract — only a live booking can be confirmed', () => {
   it('reports an agreement that was already counter-signed without touching the booking', async () => {
     h.findContract.mockResolvedValue(contract('CANCELLED', { counterSignedAt: new Date() }));
     expect(await approveContract('c1')).toEqual({ alreadySigned: true, bookingId: 'b1' });
+    expect(h.updateContract).not.toHaveBeenCalled();
+  });
+});
+
+describe('approveContract — several main admins', () => {
+  const diana = { id: 'a1', name: 'Diana', email: 'd@x.co', signatureData: 'data:image/png;base64,DIANA' };
+  const dana = { id: 'a2', name: 'Dana', email: 'dana@x.co', signatureData: 'data:image/png;base64,DANA' };
+  const sam = { id: 'a3', name: 'Sam', email: 's@x.co', signatureData: null };
+
+  beforeEach(() => {
+    h.mainAdmins.mockResolvedValue([diana, dana, sam]);
+    h.findContract.mockResolvedValue(contract('AWAITING_APPROVAL'));
+  });
+
+  it('stamps the signature of the person who was chosen, not the first on the list', async () => {
+    await approveContract('c1', 'a2');
+    const data = (h.updateContract.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({
+      counterSignedById: 'a2',
+      counterSignerName: 'Dana',
+      counterSignatureData: 'data:image/png;base64,DANA',
+    });
+    expect(data.counterSignatureData).not.toContain('DIANA');
+  });
+
+  it('records who approved in the booking history', async () => {
+    await approveContract('c1', 'a2');
+    expect(h.logEvent).toHaveBeenCalledWith('b1', 'contract_countersigned', expect.stringContaining('Dana'), 'dana@x.co');
+  });
+
+  it('refuses to guess when there are several and nobody was named, and signs nothing', async () => {
+    await expect(approveContract('c1')).rejects.toThrow(/choose who/i);
+    expect(h.updateContract).not.toHaveBeenCalled();
+    expect(h.setStage).not.toHaveBeenCalled();
+  });
+
+  it('refuses someone who is not on the main admin list', async () => {
+    await expect(approveContract('c1', 'stranger')).rejects.toThrow(/not a main admin/i);
+    expect(h.updateContract).not.toHaveBeenCalled();
+  });
+
+  it('refuses a main admin who has not drawn a signature yet', async () => {
+    await expect(approveContract('c1', 'a3')).rejects.toThrow(/Sam has no signature/);
     expect(h.updateContract).not.toHaveBeenCalled();
   });
 });

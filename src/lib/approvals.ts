@@ -1,6 +1,7 @@
 import { Stage } from '@prisma/client';
 import { prisma } from './db';
-import { logEvent, mainAdmin, notify, notifyStaff, setStage } from './notify';
+import { chooseApprover } from './approvers';
+import { logEvent, mainAdmins, notify, notifyStaff, setStage } from './notify';
 import { syncBookingToCalendar } from './calendar-sync';
 import { sendDuePickupMessage } from './pickup-release';
 
@@ -15,6 +16,10 @@ import { sendDuePickupMessage } from './pickup-release';
  * stamped on each approval from the CRM. Re-drawing on a phone three times per
  * rental would simply stop happening within a week, and an approval nobody
  * performs is worse than none.
+ *
+ * There can be several main admins. With no login the system cannot tell which
+ * one is at the screen, so when there is more than one the person approving
+ * names themselves, and it is their signature that is stamped.
  */
 
 export type ApprovalTarget =
@@ -23,25 +28,23 @@ export type ApprovalTarget =
 
 export class ApprovalError extends Error {}
 
-async function signer() {
-  const admin = await mainAdmin();
-  if (!admin) {
-    throw new ApprovalError('No main admin is set. Add one under Notifications before approving.');
-  }
-  if (!admin.signatureData) {
-    throw new ApprovalError(
-      `${admin.name} has no signature on file. Add one under Notifications before approving.`,
-    );
-  }
-  return admin;
+async function signer(approverId?: string | null) {
+  const admins = await mainAdmins();
+  const chosen = chooseApprover(
+    admins.map((a) => ({ id: a.id, name: a.name, hasSignature: Boolean(a.signatureData) })),
+    approverId,
+  );
+  if (!chosen.ok) throw new ApprovalError(chosen.error);
+  // chooseApprover only ever returns somebody from this list, with a signature.
+  return admins.find((a) => a.id === chosen.approver.id)!;
 }
 
 /**
  * Approve the rental agreement. This is the gate on confirmation: the renter is
  * only told the truck is theirs once a human here has signed it off.
  */
-export async function approveContract(contractId: string) {
-  const admin = await signer();
+export async function approveContract(contractId: string, approverId?: string | null) {
+  const admin = await signer(approverId);
 
   const contract = await prisma.contract.findUnique({
     where: { id: contractId },
@@ -112,8 +115,8 @@ export async function approveContract(contractId: string) {
  * What the signature gates is the thank-you, which should not go out saying
  * "you're all clear" before anyone has looked at the photos.
  */
-export async function approveChecklist(checklistId: string) {
-  const admin = await signer();
+export async function approveChecklist(checklistId: string, approverId?: string | null) {
+  const admin = await signer(approverId);
 
   const checklist = await prisma.checklist.findUnique({
     where: { id: checklistId },

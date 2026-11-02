@@ -251,6 +251,38 @@ export async function notify(
 }
 
 
+/**
+ * A message the office wrote by hand. Sent through the same dispatch as every
+ * other message, so it is logged with its exact text and recipient and shows
+ * on the booking. Each one gets its own key, so sending a second never
+ * collides with the first.
+ */
+export async function sendCustomMessage(
+  bookingId: string,
+  input: { subject: string; text: string; channels: MessageChannel[] },
+): Promise<{ sent: MessageChannel[]; skipped: MessageChannel[]; errors: string[] }> {
+  const built = await buildContext(bookingId);
+  if (!built) return { sent: [], skipped: [], errors: ['Booking not found.'] };
+
+  const { booking } = built;
+  const recipient = {
+    firstName: booking.firstName,
+    lastName: booking.lastName,
+    email: booking.email,
+    phone: booking.phone,
+  };
+
+  return dispatch({
+    bookingId,
+    template: 'office_message',
+    channels: input.channels,
+    recipient,
+    recipientKey: `office-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    body: { subject: input.subject, email: input.text, sms: input.text },
+    resolveContact: () => ensureContact(bookingId, recipient, booking.ghlContactId, true),
+  });
+}
+
 // ---------------------------------------------------------------- staff
 
 /**
@@ -296,10 +328,11 @@ export async function activeRecipients() {
   });
 }
 
-/** The one person who signs. Null if nobody is set, which the CRM warns about. */
-export async function mainAdmin() {
-  return prisma.notificationRecipient.findFirst({
+/** Everyone who can sign. Empty if nobody is set, which the CRM warns about. */
+export async function mainAdmins() {
+  return prisma.notificationRecipient.findMany({
     where: { role: 'MAIN_ADMIN', active: true },
+    orderBy: { name: 'asc' },
   });
 }
 

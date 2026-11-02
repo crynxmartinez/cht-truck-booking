@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
-import { Stage } from '@prisma/client';
+import { MessageChannel, Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
 import { reassignTruck, NoTruckAvailableError, SwapNotAllowedError } from '@/lib/availability';
@@ -14,6 +14,8 @@ import { syncBookingToCalendar } from '@/lib/calendar-sync';
 import { OVERLAP_MESSAGE, isOverlapViolation } from '@/lib/overlap-guard';
 import { isEmail, toE164 } from '@/lib/http';
 import { loadSettings } from '@/lib/settings';
+import { canAddMainAdmin, canStopBeingMainAdmin, type Approver } from '@/lib/approvers';
+import { prepareOfficeMessage, type OfficeMessageInput, type Preview } from '@/lib/office-message';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -173,6 +175,7 @@ export type NewBookingInput = {
 export async function checkAvailability(pickupDate: string, days: number) {
   if (!isIsoDate(pickupDate)) return null;
   const { freeTrucksFor } = await import('@/lib/availability');
+  await loadSettings();
   return freeTrucksFor(pickupDate, Number.isFinite(days) ? days : config.rentalBlockDays);
 }
 
@@ -418,11 +421,11 @@ export async function changeDates(
 
 // ---------------------------------------------------------------- approvals
 
-export async function approveContractAction(contractId: string): Promise<ActionResult> {
+export async function approveContractAction(contractId: string, approverId?: string): Promise<ActionResult> {
   await actor();
   try {
     const { approveContract } = await import('@/lib/approvals');
-    const r = await approveContract(contractId);
+    const r = await approveContract(contractId, approverId);
     if (r.alreadySigned) return { ok: true, message: 'Already signed.' };
     return done(r.confirmed ? 'Signed. The renter has been confirmed.' : 'Signed. Still waiting on another signature.');
   } catch (err) {
@@ -433,11 +436,11 @@ export async function approveContractAction(contractId: string): Promise<ActionR
   }
 }
 
-export async function approveChecklistAction(checklistId: string): Promise<ActionResult> {
+export async function approveChecklistAction(checklistId: string, approverId?: string): Promise<ActionResult> {
   await actor();
   try {
     const { approveChecklist } = await import('@/lib/approvals');
-    const r = await approveChecklist(checklistId);
+    const r = await approveChecklist(checklistId, approverId);
     if (r.alreadySigned) return { ok: true, message: 'Already signed.' };
     return done('Signed off.');
   } catch (err) {
@@ -448,7 +451,89 @@ export async function approveChecklistAction(checklistId: string): Promise<Actio
   }
 }
 
+// ---------------------------------------------------------------- message a renter
+
+export type OfficePreviewResult = { ok: true; preview: Preview } | { ok: false; errors: string[] };
+
+/** The shape of a message from the browser, checked, since a server action is a public endpoint. */
+function officeInput(raw: unknown): OfficeMessageInput | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.text !== 'string' || typeof r.subject !== 'string') return null;
+  if (typeof r.sms !== 'boolean' || typeof r.email !== 'boolean') return null;
+  return { text: r.text, subject: r.subject, sms: r.sms, email: r.email };
+}
+
+async function prepareFor(bookingId: string, raw: unknown) {
+  const input = officeInput(raw);
+  if (!input) return { ok: false as const, errors: ['That message was not understood.'] };
+
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { firstName: true, lastName: true, email: true, phone: true, stage: true },
+  });
+  if (!booking) return { ok: false as const, errors: ['That booking no longer exists.'] };
+
+  const history = await prisma.messageLog.findMany({
+    where: { bookingId, recipientId: null, channel: 'SMS' },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+    select: { channel: true, status: true, error: true, createdAt: true },
+  });
+
+  return prepareOfficeMessage(
+    booking,
+    input,
+    history.map((m) => ({ channel: m.channel, status: m.status, error: m.error, at: m.createdAt })),
+  );
+}
+
+/** Shows exactly what would be sent, and to whom. Sends nothing. */
+export async function previewOfficeMessage(bookingId: string, raw: unknown): Promise<OfficePreviewResult> {
+  await actor();
+  return prepareFor(bookingId, raw);
+}
+
+/** Sends it. Prepared again here, so the checks hold even if the browser skipped the preview. */
+export async function sendOfficeMessage(bookingId: string, raw: unknown): Promise<ActionResult> {
+  await actor();
+  const prepared = await prepareFor(bookingId, raw);
+  if (!prepared.ok) return { ok: false, error: prepared.errors.join(' ') };
+
+  const { preview } = prepared;
+  const { sendCustomMessage } = await import('@/lib/notify');
+  const res = await sendCustomMessage(bookingId, {
+    subject: preview.subject,
+    text: preview.text,
+    channels: preview.recipients.map((r) => (r.channel === 'SMS' ? MessageChannel.SMS : MessageChannel.EMAIL)),
+  });
+
+  const via = res.sent.map((c) => c.toLowerCase()).join(' and ');
+  await logEvent(
+    bookingId,
+    'office_message',
+    `Message sent by the office${via ? ` by ${via}` : ' (nothing went out)'}: “${preview.text.slice(0, 160)}”`,
+    'ops',
+  );
+
+  if (res.sent.length === 0) {
+    return { ok: false, error: `It did not go out. ${res.errors.join(' ') || 'No reason was given.'}` };
+  }
+  revalidatePath('/app');
+  const failed = res.errors.length ? ` But: ${res.errors.join(' ')}` : '';
+  return { ok: true, message: `Sent by ${via}.${failed}` };
+}
+
 // ---------------------------------------------------------------- recipients
+
+/** The active main admins, in the shape the approval rules work with. */
+async function currentApprovers(): Promise<Approver[]> {
+  const admins = await prisma.notificationRecipient.findMany({
+    where: { role: 'MAIN_ADMIN', active: true },
+    select: { id: true, name: true, signatureData: true },
+  });
+  return admins.map((a) => ({ id: a.id, name: a.name, hasSignature: Boolean(a.signatureData) }));
+}
 
 export async function saveRecipient(input: {
   id?: string;
@@ -475,6 +560,18 @@ export async function saveRecipient(input: {
   });
   if (clash) return { ok: false, error: 'Somebody on the list already uses that email.' };
 
+  // Several people can be main admin. The limits: not more than a handful, and
+  // never leave nobody who can sign.
+  const activeAdmins = await currentApprovers();
+  const becomesAdmin = input.role === 'MAIN_ADMIN' && input.active;
+  const wasAdmin = Boolean(input.id) && activeAdmins.some((a) => a.id === input.id);
+  const limit = becomesAdmin && !wasAdmin
+    ? canAddMainAdmin(activeAdmins.length)
+    : wasAdmin && !becomesAdmin
+      ? canStopBeingMainAdmin(activeAdmins, input.id!)
+      : null;
+  if (limit) return { ok: false, error: limit };
+
   const data = {
     name, email, phone,
     role: input.role,
@@ -492,14 +589,6 @@ export async function saveRecipient(input: {
     await prisma.notificationRecipient.updateMany({
       where: { id: input.id, OR: [{ email: { not: email } }, { phone: { not: phone } }] },
       data: { ghlContactId: null },
-    });
-  }
-
-  // Exactly one main admin. Promoting somebody demotes the incumbent.
-  if (input.role === 'MAIN_ADMIN') {
-    await prisma.notificationRecipient.updateMany({
-      where: { id: { not: saved.id }, role: 'MAIN_ADMIN' },
-      data: { role: 'ADMIN' },
     });
   }
 
@@ -525,10 +614,8 @@ export async function removeRecipient(id: string): Promise<ActionResult> {
   if (!r) return { ok: false, error: 'Already gone.' };
 
   if (r.role === 'MAIN_ADMIN') {
-    return {
-      ok: false,
-      error: 'That is the main admin, who signs the paperwork. Make somebody else main admin first.',
-    };
+    const blocked = canStopBeingMainAdmin(await currentApprovers(), id);
+    if (blocked) return { ok: false, error: blocked };
   }
 
   await prisma.notificationRecipient.delete({ where: { id } });

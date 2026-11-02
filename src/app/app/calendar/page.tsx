@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
 import { dateToIso, todayInOps } from '@/lib/dates';
 import { layout, monthWeeks, type CalItem } from '@/lib/calendar-layout';
+import { googleCalendarLink } from '@/lib/calendar-link';
 import { MonthCalendar } from './MonthCalendar';
 import type { BookingDetail, TruckOption } from '../types';
 import { loadBookingDetail } from '../detail';
@@ -97,6 +98,17 @@ export default async function CalendarPage({
       <div className="topbar">
         <h1>Calendar</h1>
         <div className="spacer" />
+        {googleCalendarLink(config.gcal.calendarId) ? (
+          <a
+            className="btn ghost small"
+            href={googleCalendarLink(config.gcal.calendarId) ?? undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Opens the shared Truck Rentals calendar in Google Calendar"
+          >
+            Open in Google Calendar
+          </a>
+        ) : null}
         <div className="tiny">{config.timeZone.replace('_', ' ')}</div>
       </div>
 

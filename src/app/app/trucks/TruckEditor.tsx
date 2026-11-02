@@ -25,7 +25,7 @@ export function TruckEditor({
         </span>
       </h2>
       <div className="hint">
-        The lockbox code only ever appears in the 6 AM pickup message and on the pickup checklist page.
+        The lockbox code appears in the pickup-day messages and on the renter&rsquo;s pickup checklist page.
       </div>
 
       {flash ? <div className={flash.ok ? 'note ok' : 'note alert'}>{flash.ok ? flash.message : flash.error}</div> : null}

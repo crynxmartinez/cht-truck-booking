@@ -65,6 +65,10 @@ export type MessageData = {
   status: string;
   sentLabel: string;
   error: string | null;
+  /** Who it went to (an email address or a phone number), and exactly what it said. */
+  to: string | null;
+  subject: string | null;
+  body: string | null;
 };
 
 export type EventData = {

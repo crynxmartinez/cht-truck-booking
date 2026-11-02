@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { Fragment, useEffect, useState, useTransition } from 'react';
 import type { Stage } from '@prisma/client';
 import { STAGE_META, STAGE_LABEL } from '@/lib/stages';
 import type { ActionResult } from './actions';
@@ -29,6 +29,8 @@ export function BookingModal({
   const c = detail.card;
   const [flash, setFlash] = useState<ActionResult | null>(null);
   const [note, setNote] = useState('');
+  // Which row in "Messages sent" is open to show exactly what was sent.
+  const [openMessage, setOpenMessage] = useState<number | null>(null);
   const [dates, setDates] = useState<{ start: string; days: number } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -412,15 +414,44 @@ export function BookingModal({
                 </thead>
                 <tbody>
                   {detail.messages.map((m, i) => (
-                    <tr key={i}>
-                      <td>{m.template.replace(/_/g, ' ')}</td>
-                      <td>{m.channel.toLowerCase()}</td>
-                      <td style={m.status === 'FAILED' ? { color: 'var(--red)' } : undefined}>
-                        {m.status.toLowerCase()}
-                        {m.error ? ` — ${m.error.slice(0, 60)}` : ''}
-                      </td>
-                      <td>{m.sentLabel}</td>
-                    </tr>
+                    <Fragment key={i}>
+                      <tr
+                        onClick={() => setOpenMessage(openMessage === i ? null : i)}
+                        style={{ cursor: 'pointer' }}
+                        title="Click to read exactly what was sent"
+                      >
+                        <td>
+                          {openMessage === i ? '▾ ' : '▸ '}
+                          {m.template.replace(/_/g, ' ')}
+                        </td>
+                        <td>{m.channel.toLowerCase()}</td>
+                        <td style={m.status === 'FAILED' ? { color: 'var(--red)' } : undefined}>
+                          {m.status.toLowerCase()}
+                          {m.error ? ` — ${m.error.slice(0, 60)}` : ''}
+                        </td>
+                        <td>{m.sentLabel}</td>
+                      </tr>
+                      {openMessage === i ? (
+                        <tr>
+                          <td colSpan={4}>
+                            <div className="tiny">To: {m.to ?? 'unknown'}</div>
+                            {m.subject ? (
+                              <div className="tiny">
+                                Subject: <b>{m.subject}</b>
+                              </div>
+                            ) : null}
+                            <div style={{ whiteSpace: 'pre-wrap', margin: '6px 0 4px', fontSize: 13, lineHeight: 1.5 }}>
+                              {m.body ?? 'The text of this message was not saved.'}
+                            </div>
+                            {m.status === 'FAILED' && m.error ? (
+                              <div className="tiny" style={{ color: 'var(--red)' }}>
+                                It did not go out: {m.error}
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

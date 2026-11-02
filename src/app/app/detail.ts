@@ -178,6 +178,9 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
       status: m.status,
       sentLabel: formatStamp(m.sentAt ?? m.createdAt),
       error: m.error,
+      to: m.toAddress,
+      subject: m.subject,
+      body: m.body,
     })),
     events: b.events.map((e) => ({
       type: e.type,

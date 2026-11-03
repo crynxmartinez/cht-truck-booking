@@ -136,3 +136,20 @@ describe('truck_changed — the text message reads like a person wrote it', () =
     expect(m.sms).not.toContain('2026-10-09');
   });
 });
+
+describe('dates_changed — the text message reads like a person wrote it', () => {
+  // Found by reading the stored message bodies: the text printed "2026-12-03".
+  it('writes the dates out instead of printing them in computer format', async () => {
+    const { render } = await import('./messages');
+    const sms = render('dates_changed', {
+      firstName: 'Ana',
+      reference: 'CHT-TEST',
+      truckCode: 'A',
+      pickupDate: '2026-12-03',
+      returnDate: '2026-12-05',
+    }).sms;
+    expect(sms).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(sms).toContain('Dec 3, 2026');
+    expect(sms).toContain('Dec 5, 2026');
+  });
+});

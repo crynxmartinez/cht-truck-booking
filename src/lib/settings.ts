@@ -3,6 +3,8 @@ import { BASELINE, config } from './config';
 import { applySettings } from './settings-store';
 import { formatSetting, isSettingKey, settingDef, type SettingKey } from './settings-catalog';
 import { SETTING_PREFIX, planChanges, settingsFromRows } from './settings-plan';
+import { EDIT_PREFIX, wordingFromRows } from './wording-db';
+import { applyWording } from './wording-store';
 
 /**
  * The office's settings, in the database.
@@ -27,8 +29,12 @@ let loadedAt = 0;
 export async function loadSettings(options: { force?: boolean } = {}): Promise<void> {
   if (!options.force && Date.now() - loadedAt < CACHE_MS) return;
   try {
-    const rows = await prisma.setting.findMany({ where: { key: { startsWith: SETTING_PREFIX } } });
+    // One query for both: the office's settings, and any message wording they have edited.
+    const rows = await prisma.setting.findMany({
+      where: { OR: [{ key: { startsWith: SETTING_PREFIX } }, { key: { startsWith: EDIT_PREFIX } }] },
+    });
     applySettings(settingsFromRows(rows));
+    applyWording(wordingFromRows(rows));
     loadedAt = Date.now();
   } catch (err) {
     console.error('settings: could not read them, using the built-in values', err);

@@ -1,6 +1,13 @@
 import { config } from './config';
 import { formatLong, formatMedium } from './dates';
+import { hourLabel } from './hours';
 import { checklistUrl, signUrl } from './tokens';
+import { fillWording } from './wording-fill';
+import { wordingFor } from './wording-store';
+import { wordingValues } from './wording-values';
+
+// Kept exported from here: other modules have always imported it from messages.
+export { hourLabel };
 
 /**
  * Every email and text the system sends. Kept as data rather than scattered
@@ -50,13 +57,24 @@ export type MessageContext = {
 
 const SIGNOFF = 'Diana\nCory Home Team';
 
-/** 6 -> "6 AM", 14 -> "2 PM". The pickup text hour is configurable, so copy must not hard-code it. */
-export function hourLabel(hour: number): string {
-  const h = ((hour % 24) + 24) % 24;
-  return `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}`;
+/**
+ * The message as it will be sent: the office's own wording if they have changed
+ * it, otherwise the built-in text. If an edited message needs something this
+ * booking does not have (no lockbox code assigned, say), it falls back to the
+ * built-in text rather than go out with a blank in it.
+ */
+export function render(key: TemplateKey, c: MessageContext): Rendered {
+  const edited = wordingFor(key);
+  if (edited) {
+    const filled = fillWording(edited, wordingValues(c));
+    if (filled.ok) return filled.wording;
+    console.warn(`message ${key}: edited wording needs ${filled.missing.join(', ')}; using the built-in text`);
+  }
+  return renderDefault(key, c);
 }
 
-export function render(key: TemplateKey, c: MessageContext): Rendered {
+/** The built-in wording, exactly as written in this file. */
+export function renderDefault(key: TemplateKey, c: MessageContext): Rendered {
   const pickup = formatLong(c.pickupDate);
   const back = formatLong(c.returnDate);
   const truck = c.truckCode ? `Truck ${c.truckCode}` : 'your truck';
@@ -201,7 +219,7 @@ export function render(key: TemplateKey, c: MessageContext): Rendered {
         ].join('\n'),
         sms:
           `Hi ${c.firstName}, your Cory Home Team truck rental has moved. New pickup ` +
-          `${c.pickupDate}, back ${c.returnDate}. Reply if that does not work. — Diana`,
+          `${formatMedium(c.pickupDate)}, back ${formatMedium(c.returnDate)}. Reply if that does not work. — Diana`,
       };
 
     case 'rental_confirmed':

@@ -5,6 +5,8 @@ import { addDays, dateToIso, todayInOps } from '../src/lib/dates';
 import { listEvents } from '../src/lib/gcal';
 import { diffCalendar, findOverlaps, wrongTruckCode, type HoldRow } from '../src/lib/invariants';
 import { GUARDED_STAGES, OVERLAP_CONSTRAINT } from '../src/lib/overlap-guard';
+import { TERMS_VERSION } from '../src/lib/contract-terms';
+import { EDIT_PREFIX, wordingFromRows } from '../src/lib/wording-db';
 
 /**
  * Is the system actually consistent right now? Read-only.
@@ -154,6 +156,33 @@ async function main() {
     `SELECT conname FROM pg_constraint WHERE conname = '${OVERLAP_CONSTRAINT}'`,
   );
   record('the database refuses overlapping bookings by itself (guard installed)', guard.length ? [] : [`${OVERLAP_CONSTRAINT} is not installed — run scripts/apply-overlap-guard.ts --apply`]);
+
+  // 7. Every message the office edited still passes the rules. A stored edit
+  // that no longer does is ignored when messages are sent (the built-in text
+  // is used), so this is a warning that somebody's edit is not in effect.
+  const editRows = await prisma.setting.findMany({ where: { key: { startsWith: EDIT_PREFIX } } });
+  const inEffect = wordingFromRows(editRows);
+  record(
+    `every edited message still passes the rules (${editRows.length} edited)`,
+    editRows
+      .filter((r) => !(r.key.slice(EDIT_PREFIX.length) in inEffect))
+      .map((r) => `${r.key} is stored but breaks a rule, so the built-in wording is being sent instead`),
+  );
+
+  // 8. An agreement signed under the current terms carries the fuel and dolly
+  // ticks, since the sign route refuses a signature without them.
+  const missingAcks = await prisma.contract.findMany({
+    where: {
+      status: 'SIGNED',
+      termsVersion: TERMS_VERSION,
+      OR: [{ gasAcknowledged: false }, { dollyAcknowledged: false }],
+    },
+    select: { id: true, booking: { select: { reference: true } } },
+  });
+  record(
+    'every agreement signed under the current terms has its fuel and dolly ticks',
+    missingAcks.map((c) => `${c.booking.reference}: signed under ${TERMS_VERSION} without both ticks`),
+  );
 
   // -------------------------------------------------------------- report
   console.log(`Checked ${holding.length} truck-holding booking(s), ${trucks.length} trucks, as of ${today}.\n`);

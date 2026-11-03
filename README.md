@@ -130,6 +130,27 @@ transaction that locks the truck rows first. One wins; the other gets a clean
 
 ---
 
+## Settings and message wording, edited from the app
+
+The values that used to be environment variables only (the pickup and return text
+times, notice needed to book, hours before an unsigned truck is released, retention,
+storage size, the fuel and exterior photo requirements, how long finished rentals stay
+on the Board) are editable on the CRM's **Settings** page. The environment variable is
+now only the default a setting returns to. Each value accepts a range, times must agree
+with each other, a save is all-or-nothing, and every change is written to a history with
+a put-back button. They are stored in the `Setting` table (`cfg.<key>`); a setting
+nobody has changed has no row. `src/lib/settings-catalog.ts` is the list.
+
+The **Messages** page shows every message and when it is sent, and lets the office
+change the wording of the renter messages. The editor works on today's text with the
+changing parts as `{placeholders}`; a message cannot be saved without the placeholders
+it needs (the sign link, the checklist links, the lockbox code), and one that needs a
+value a booking lacks falls back to the built-in text rather than send a blank. Edits
+live in `Setting` (`msg.<template>`, history `msglog.*`). The truck-changed message
+depends on the situation and stays in code.
+
+---
+
 ## The clock
 
 Vercel schedules cron in UTC and California moves twice a year, so a fixed UTC hour
@@ -216,8 +237,13 @@ Uploads are capped at 4 MB — Vercel rejects a Serverless Function request body
 a 12 MB phone photo is fine; only PDFs and images the browser cannot re-encode can
 trip it.
 
-A nightly job totals Blob usage. Over `BLOB_PURGE_START_PCT` (80%) it deletes the
-oldest **eligible** files until back under `BLOB_PURGE_TARGET_PCT` (70%).
+**Nothing is deleted automatically unless the office switches deleting on** (Settings,
+Storage). With it off, none of the three deleting steps in the daily sweep runs:
+not abandoned uploads, not stray files, not the clean-up when storage is nearly full.
+A daily reading stores how full storage is, shows a banner in the CRM, and emails the
+office at 70% and again at 90%, once per level. With deleting on, over
+`BLOB_PURGE_START_PCT` (80%) it deletes the oldest **eligible** files until back
+under `BLOB_PURGE_TARGET_PCT` (70%).
 
 | Asset | Kept until |
 |---|---|
@@ -257,6 +283,13 @@ owner and arrives weeks later. That delay is why this one gets its own tick.
 > clause 12 of the Waiver bound behind it specifies **California** law, venue in
 > Riverside County. Both are in the same signed packet. This is carried over from the
 > source documents as-is and should be settled with counsel.
+
+**Fuel and dolly** are two more separate ticks, added in contract version
+`2026-11-04.1`, stored with their own times (`gasAcknowledged`, `dollyAcknowledged`) and
+printed on the PDF as ticked boxes. Agreements signed earlier do not contain them and
+are never rewritten; they print as not agreed. The wording is a draft with no fee
+amounts and needs Diana's or counsel's approval. The fuel clause refers to the pickup
+checklist, so turn on **Ask for a fuel gauge photo at pickup** in Settings.
 
 ---
 

@@ -7,6 +7,7 @@ import { cleanString, clientIp, isEmail, json, rateLimit, toE164 } from '@/lib/h
 import { fullTermsText, TERMS_VERSION } from '@/lib/contract-terms';
 import { hashTerms, newToken } from '@/lib/tokens';
 import { buildContractPdf } from '@/lib/pdf';
+import { missingAcknowledgement } from '@/lib/signing-checks';
 import { blobConfigured, recordDocument, storeFile } from '@/lib/storage';
 import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 
@@ -75,7 +76,6 @@ async function handleSign(req: Request, token: string) {
   const initials = cleanString(body.initials, 5).toUpperCase();
   const signerName = cleanString(body.signerName, 120) || fields.clientName || fields.name || '';
   const signatureDataUrl = typeof body.signatureDataUrl === 'string' ? body.signatureDataUrl : '';
-  const tollAccepted = body.tollAccepted === true;
 
   const isRental = contract.type === ContractType.RENTAL_AGREEMENT;
   const b = contract.booking;
@@ -106,7 +106,8 @@ async function handleSign(req: Request, token: string) {
 
   if (!signerName) return json({ error: 'Please enter your name.' }, { status: 400 });
   if (initials.length < 2) return json({ error: 'Please initial the damage waiver.' }, { status: 400 });
-  if (!tollAccepted) return json({ error: 'Please agree to cover any tolls before signing.' }, { status: 400 });
+  const missing = missingAcknowledgement(body);
+  if (missing) return json({ error: missing }, { status: 400 });
   if (!/^data:image\/(png|jpeg);base64,/.test(signatureDataUrl)) {
     return json({ error: 'Please sign before submitting.' }, { status: 400 });
   }
@@ -127,6 +128,10 @@ async function handleSign(req: Request, token: string) {
       initials,
       tollAcknowledged: true,
       tollAcknowledgedAt: signedAt,
+      gasAcknowledged: true,
+      gasAcknowledgedAt: signedAt,
+      dollyAcknowledged: true,
+      dollyAcknowledgedAt: signedAt,
       signatureData: signatureDataUrl,
       payload: fields as never,
       termsVersion: TERMS_VERSION,
@@ -158,6 +163,8 @@ async function handleSign(req: Request, token: string) {
         signerName,
         initials,
         tollAcknowledged: true,
+        gasAcknowledged: true,
+        dollyAcknowledged: true,
         signatureDataUrl,
         signedAt,
         ipAddress: ip,

@@ -3,6 +3,8 @@ import { config } from './config';
 import {
   DAMAGE_WAIVER_NOTICE,
   TOLL_AGREEMENT,
+  GAS_AGREEMENT,
+  DOLLY_AGREEMENT,
   READ_AND_SIGN,
   RENTAL_CLAUSES,
   RENTAL_INTRO,
@@ -37,6 +39,9 @@ export type ContractPdfInput = {
   signerName: string;
   initials: string;
   tollAcknowledged: boolean;
+  /** Absent on agreements signed before the fuel and dolly clauses existed. */
+  gasAcknowledged?: boolean;
+  dollyAcknowledged?: boolean;
   signatureDataUrl?: string | null;
   signedAt: Date;
   ipAddress?: string | null;
@@ -247,27 +252,38 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
   ]);
 
   w.rule(12);
-  w.text('TOLLS', { size: 9, font: w.bold, gap: 5 });
-  w.text(TOLL_AGREEMENT, { size: 8.5, color: MUTED, gap: 6 });
-  // Drawn as a real ticked box: a reader should see the consent, not read that
-  // it happened.
-  const boxY = w.y;
-  w.page.drawRectangle({
-    x: M, y: boxY - 10, width: 10, height: 10,
-    borderColor: input.tollAcknowledged ? RED : RULE, borderWidth: 1,
-  });
-  if (input.tollAcknowledged) {
-    w.page.drawText('X', { x: M + 2.2, y: boxY - 8.2, size: 8, font: w.bold, color: RED });
-  }
-  w.page.drawText(
-    sanitise(
-      input.tollAcknowledged
-        ? 'Agreed to pay all tolls, fees and penalties incurred during this rental.'
-        : 'NOT AGREED',
-    ),
-    { x: M + 16, y: boxY - 8, size: 8.5, font: w.bold, color: INK },
+  // Each separately acknowledged clause is the text, then a real ticked box:
+  // a reader should see the consent, not read that it happened.
+  const acknowledgement = (title: string, clause: string, agreedText: string, agreed: boolean) => {
+    w.text(title, { size: 9, font: w.bold, gap: 5 });
+    w.text(clause, { size: 8.5, color: MUTED, gap: 6 });
+    const boxY = w.y;
+    w.page.drawRectangle({
+      x: M, y: boxY - 10, width: 10, height: 10,
+      borderColor: agreed ? RED : RULE, borderWidth: 1,
+    });
+    if (agreed) {
+      w.page.drawText('X', { x: M + 2.2, y: boxY - 8.2, size: 8, font: w.bold, color: RED });
+    }
+    w.page.drawText(sanitise(agreed ? agreedText : 'NOT AGREED'), {
+      x: M + 16, y: boxY - 8, size: 8.5, font: w.bold, color: INK,
+    });
+    w.y = boxY - 22;
+  };
+
+  acknowledgement('TOLLS', TOLL_AGREEMENT, 'Agreed to pay all tolls, fees and penalties incurred during this rental.', input.tollAcknowledged);
+  acknowledgement(
+    'FUEL',
+    GAS_AGREEMENT,
+    'Agreed to return the truck with at least the fuel it had at pickup.',
+    input.gasAcknowledged === true,
   );
-  w.y = boxY - 22;
+  acknowledgement(
+    'DOLLY',
+    DOLLY_AGREEMENT,
+    'Agreed to return the dolly, and to pay for it if lost or damaged.',
+    input.dollyAcknowledged === true,
+  );
 
   w.rule(12);
   w.text('CUSTOMER MUST READ AND SIGN HERE', { size: 9, font: w.bold, gap: 5 });

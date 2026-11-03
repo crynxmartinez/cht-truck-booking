@@ -12,7 +12,7 @@
  * counsel before the next version.
  */
 
-export const TERMS_VERSION = '2026-09-07.1';
+export const TERMS_VERSION = '2026-11-04.1';
 
 export type Clause = { n: string; title?: string; body: string[]; sub?: string[] };
 
@@ -278,6 +278,25 @@ export const TOLL_AGREEMENT =
 export const TOLL_CHECKBOX_LABEL =
   'I agree to pay for any tolls I incur during this rental, including any fees or penalties.';
 
+/**
+ * Fuel and the dolly. Each is a separate tick for the same reason as tolls.
+ *
+ * DRAFT WORDING, for Diana and the company's attorney to approve before this
+ * is relied on. Deliberately no fee amounts: what to charge is the business's
+ * decision, and the wording says only that the actual cost can be charged.
+ * Agreements signed before this version do not contain these clauses, and are
+ * never rewritten.
+ */
+export const GAS_AGREEMENT =
+  'I understand the truck is given to me with the amount of fuel shown on the pickup checklist, and I agree to return it with at least that much fuel. If I return it with less, Cory Home Team may charge me for the fuel needed to bring it back to that level, at the price actually paid.';
+
+export const GAS_CHECKBOX_LABEL = 'I agree to return the truck with at least the fuel it had when I picked it up.';
+
+export const DOLLY_AGREEMENT =
+  'If a dolly is provided with the truck, I agree to return it with the truck, in the same condition as when I received it, ordinary wear and tear excepted. If it is lost, stolen or damaged, I agree to pay the cost of repairing or replacing it.';
+
+export const DOLLY_CHECKBOX_LABEL = 'I agree to return the dolly with the truck, and to pay for it if it is lost or damaged.';
+
 export const READ_AND_SIGN =
   'I have read and agree to be bound by the terms and conditions of both sides of this agreement. I have read and understand the limitations of all offered and declined insurance packages.';
 
@@ -289,6 +308,6 @@ export function fullTermsText(): string {
     parts.push(...c.body);
     if (c.sub) parts.push(...c.sub);
   }
-  parts.push(WAIVER_INTRO, WAIVER_CLOSING, DAMAGE_WAIVER_NOTICE, TOLL_AGREEMENT, READ_AND_SIGN);
+  parts.push(WAIVER_INTRO, WAIVER_CLOSING, DAMAGE_WAIVER_NOTICE, TOLL_AGREEMENT, GAS_AGREEMENT, DOLLY_AGREEMENT, READ_AND_SIGN);
   return parts.join('\n');
 }

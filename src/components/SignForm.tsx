@@ -3,7 +3,16 @@
 import { useState } from 'react';
 import { Terms } from './Terms';
 import { SignaturePad } from './SignaturePad';
-import { DAMAGE_WAIVER_NOTICE, READ_AND_SIGN, TOLL_AGREEMENT, TOLL_CHECKBOX_LABEL } from '@/lib/contract-terms';
+import {
+  DAMAGE_WAIVER_NOTICE,
+  DOLLY_AGREEMENT,
+  DOLLY_CHECKBOX_LABEL,
+  GAS_AGREEMENT,
+  GAS_CHECKBOX_LABEL,
+  READ_AND_SIGN,
+  TOLL_AGREEMENT,
+  TOLL_CHECKBOX_LABEL,
+} from '@/lib/contract-terms';
 
 export type SignFormProps = {
   token: string;
@@ -56,6 +65,8 @@ export function SignForm(props: SignFormProps) {
 
   const [initials, setInitials] = useState('');
   const [tollAccepted, setTollAccepted] = useState(false);
+  const [gasAccepted, setGasAccepted] = useState(false);
+  const [dollyAccepted, setDollyAccepted] = useState(false);
   const [wantsAdditional, setWantsAdditional] = useState<'yes' | 'no' | ''>('');
   const [addDriver, setAddDriver] = useState({ name: '', email: '', phone: '' });
   const [signature, setSignature] = useState<string | null>(null);
@@ -100,6 +111,8 @@ export function SignForm(props: SignFormProps) {
 
     if (initials.trim().length < 2) e.initials = 'Please initial the damage waiver.';
     if (!tollAccepted) e.toll = 'Please tick the toll agreement to continue.';
+    if (!gasAccepted) e.gas = 'Please tick the fuel agreement to continue.';
+    if (!dollyAccepted) e.dolly = 'Please tick the dolly agreement to continue.';
     if (!isAdditional && !wantsAdditional) e.wantsAdditional = 'Please answer yes or no.';
     if (!isAdditional && wantsAdditional === 'yes') {
       if (addDriver.name.trim().length < 2) e.adName = "Enter the additional driver's name.";
@@ -132,6 +145,8 @@ export function SignForm(props: SignFormProps) {
           signerName: signerName || f.clientName || f.name,
           signatureDataUrl: signature,
           tollAccepted,
+          gasAccepted,
+          dollyAccepted,
           additionalDriver: !isAdditional && wantsAdditional === 'yes' ? addDriver : null,
         }),
       });
@@ -389,6 +404,40 @@ export function SignForm(props: SignFormProps) {
           </span>
         </label>
         <Err k="toll" />
+
+        <h3>Fuel</h3>
+        <div className="note warn">{GAS_AGREEMENT}</div>
+        <label className="check" {...inv('gas')}>
+          <input
+            type="checkbox"
+            checked={gasAccepted}
+            onChange={(e) => {
+              setGasAccepted(e.target.checked);
+              setErrors((p) => ({ ...p, gas: '' }));
+            }}
+          />
+          <span>
+            {GAS_CHECKBOX_LABEL} <em>*</em>
+          </span>
+        </label>
+        <Err k="gas" />
+
+        <h3>Dolly</h3>
+        <div className="note warn">{DOLLY_AGREEMENT}</div>
+        <label className="check" {...inv('dolly')}>
+          <input
+            type="checkbox"
+            checked={dollyAccepted}
+            onChange={(e) => {
+              setDollyAccepted(e.target.checked);
+              setErrors((p) => ({ ...p, dolly: '' }));
+            }}
+          />
+          <span>
+            {DOLLY_CHECKBOX_LABEL} <em>*</em>
+          </span>
+        </label>
+        <Err k="dolly" />
 
         {!isAdditional ? (
           <>

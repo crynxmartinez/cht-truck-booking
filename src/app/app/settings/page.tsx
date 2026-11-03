@@ -191,6 +191,16 @@ export default async function SettingsPage() {
                   </td>
                 </tr>
                 <tr>
+                  <td>Fuel and dolly clauses</td>
+                  <td>
+                    <span className="tag green">Required</span>{' '}
+                    <span className="tiny">
+                      two more ticks the renter must give, added in contract version {TERMS_VERSION}. Agreements signed earlier do not
+                      have them and are never changed. The wording is a draft until Diana or the attorney approves it.
+                    </span>
+                  </td>
+                </tr>
+                <tr>
                   <td>Contract version</td>
                   <td className="mono">{TERMS_VERSION}</td>
                 </tr>

@@ -33,3 +33,22 @@ describe('truck_changed — without a detail', () => {
     expect(m.email).not.toContain('null');
   });
 });
+
+describe('the confirmed alert follows the pickup-hour setting', () => {
+  it('names the hour that is set, not a fixed 6 AM', async () => {
+    const { applySettings } = await import('./settings-store');
+    const { renderStaff } = await import('./staff-messages');
+    applySettings({ pickupSmsHour: 8 });
+    try {
+      const r = renderStaff('confirmed', {
+        reference: 'CHT-T', renterName: 'Ana Test', renterEmail: 'a@b.co', renterPhone: '555-010-0000',
+        truckCode: 'A', pickupDate: '2026-12-03', returnDate: '2026-12-05',
+      });
+      const all = `${r.subject}\n${r.email}\n${r.sms}`;
+      expect(all).toMatch(/8 AM/);
+      expect(all).not.toMatch(/\b6 ?AM\b/);
+    } finally {
+      applySettings({});
+    }
+  });
+});

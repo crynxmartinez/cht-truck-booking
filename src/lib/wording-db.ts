@@ -1,6 +1,6 @@
 import { prisma } from './db';
 import type { TemplateKey } from './messages';
-import { validateWording } from './wording';
+import { EDITABLE, validateWording } from './wording';
 import type { Wording } from './wording-fill';
 import { applyWording } from './wording-store';
 
@@ -59,7 +59,9 @@ export async function saveWording(key: TemplateKey, input: Wording, by: string):
   const { defaultWording } = await import('./wording');
   const builtIn = defaultWording(key);
   if (same(wording, { subject: builtIn.subject.trim(), email: builtIn.email.trim(), sms: builtIn.sms.trim() })) {
-    return { ok: true };
+    // Saving the original text over an edit means "put it back", or the edit would stay in force.
+    const existing = await prisma.setting.findUnique({ where: { key: `${EDIT_PREFIX}${key}` } });
+    return existing ? resetWording(key, by) : { ok: true };
   }
 
   const storageKey = `${EDIT_PREFIX}${key}`;
@@ -76,7 +78,7 @@ export async function saveWording(key: TemplateKey, input: Wording, by: string):
 
 /** Put a message back to the built-in text. The edit is removed; the history keeps it. */
 export async function resetWording(key: TemplateKey, by: string): Promise<SaveWording> {
-  if (!/^[a-z_]+$/.test(key)) return { ok: false, errors: ['That is not one of our messages.'] };
+  if (!EDITABLE.includes(key)) return { ok: false, errors: ['That is not a message that can be edited.'] };
   await prisma.$transaction([
     prisma.setting.deleteMany({ where: { key: `${EDIT_PREFIX}${key}` } }),
     prisma.setting.create({

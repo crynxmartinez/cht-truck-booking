@@ -1,5 +1,5 @@
 import { renderDefault, type MessageContext, type TemplateKey } from './messages';
-import { PLACEHOLDERS, fillWording, isPlaceholder, placeholdersIn, type Wording } from './wording-fill';
+import { PLACEHOLDERS, fillWording, isPlaceholder, placeholdersIn, strayBrackets, type Wording } from './wording-fill';
 import { wordingValues } from './wording-values';
 
 export { wordingValues };
@@ -105,6 +105,14 @@ export function validateWording(key: TemplateKey, w: Wording): Validated {
   if (email.length < 2) errors.push('The email cannot be empty.');
   if (email.length > MAX_EMAIL) errors.push(`The email can be at most ${MAX_EMAIL} characters.`);
 
+  // Anything in curly brackets that is not a proper placeholder would reach the
+  // renter with the brackets showing: "{ firstName }", "{first_name}", "{{signLink}}".
+  for (const [label, text] of [['email subject', subject], ['text message', sms], ['email', email]] as const) {
+    if (strayBrackets(text)) {
+      errors.push(`The ${label} has a curly bracket that is not part of a placeholder. Brackets are only for placeholders such as {firstName}, with no spaces inside.`);
+    }
+  }
+
   const unknown = new Set<string>();
   for (const text of [subject, sms, email]) for (const name of placeholdersIn(text)) if (!isPlaceholder(name)) unknown.add(name);
   for (const name of unknown) errors.push(`{${name}} is not a placeholder we know. Use the list beside the editor.`);
@@ -113,12 +121,21 @@ export function validateWording(key: TemplateKey, w: Wording): Validated {
   // losing the link from one is not made good by the other having it.
   const original = defaultWording(key);
   for (const [label, field, was] of [
+    ['email subject', subject, original.subject],
     ['text message', sms, original.sms],
     ['email', email, original.email],
   ] as const) {
     for (const name of CRITICAL) {
-      if (placeholdersIn(was).includes(name) && !placeholdersIn(field).includes(name)) {
+      const had = placeholdersIn(was).includes(name);
+      const has = placeholdersIn(field).includes(name);
+      if (had && !has && label !== 'email subject') {
         errors.push(`The ${label} must keep {${name}}, ${CRITICAL_WHY[name]}. Without it the message would not work.`);
+      }
+      // The reverse matters as much: the lockbox code in a message sent before
+      // someone has signed, or a link where it was never meant to be, is a leak
+      // as much as a missing link is a break.
+      if (has && !had) {
+        errors.push(`{${name}} (${CRITICAL_WHY[name]}) cannot be added to the ${label} of this message, because the original does not have it there.`);
       }
     }
   }

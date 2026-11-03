@@ -153,3 +153,22 @@ describe('dates_changed — the text message reads like a person wrote it', () =
     expect(sms).toContain('Dec 5, 2026');
   });
 });
+
+describe('the pickup hour in the text follows the setting', () => {
+  // The office can now change when the pickup text goes out. Messages that
+  // promised "6 AM" would then be untrue.
+  const ctx = { firstName: 'Ana', reference: 'CHT-TEST', truckCode: 'A', pickupDate: '2026-12-03', returnDate: '2026-12-05' };
+
+  it.each(['dates_changed', 'rental_confirmed'] as const)('%s says the hour that is set, not 6 AM', async (key) => {
+    const { applySettings } = await import('./settings-store');
+    applySettings({ pickupSmsHour: 8 });
+    try {
+      const r = render(key, ctx);
+      const all = `${r.subject}\n${r.email}\n${r.sms}`;
+      expect(all).toMatch(/8 AM/);
+      expect(all).not.toMatch(/\b6 ?AM\b/);
+    } finally {
+      applySettings({});
+    }
+  });
+});

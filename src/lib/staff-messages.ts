@@ -1,5 +1,6 @@
 import { config } from './config';
 import { formatMedium } from './dates';
+import { hourLabel } from './hours';
 
 /**
  * Internal alerts. Deliberately not written like the customer copy — these are
@@ -129,8 +130,8 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
     case 'confirmed':
       return wrap(
         `Confirmed — ${who}, ${truck}, ${pickup}`,
-        `All agreements are in${c.additionalDriverName ? `, including ${c.additionalDriverName} as second driver` : ''}. ${truck} is locked to ${who} for ${pickup}. They get the lockbox code at 6 AM that morning.`,
-        `CONFIRMED · ${who} · ${truck} · ${pickup}${c.additionalDriverName ? ` (+${c.additionalDriverName})` : ''}. Lockbox code 6 AM.`,
+        `All agreements are in${c.additionalDriverName ? `, including ${c.additionalDriverName} as second driver` : ''}. ${truck} is locked to ${who} for ${pickup}. They get the lockbox code at ${hourLabel(config.pickupSmsHour)} that morning.`,
+        `CONFIRMED · ${who} · ${truck} · ${pickup}${c.additionalDriverName ? ` (+${c.additionalDriverName})` : ''}. Lockbox code ${hourLabel(config.pickupSmsHour)}.`,
       );
 
     case 'picked_up':

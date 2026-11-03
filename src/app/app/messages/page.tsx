@@ -76,14 +76,14 @@ export default async function MessagesPage() {
     if (LOCKED.includes(key as TemplateKey)) return 'locked';
     if (!EDITABLE.includes(key as TemplateKey)) return undefined;
     const builtIn = defaultWording(key as TemplateKey);
-    const history = edited.has(key)
-      ? (await wordingHistory(key as TemplateKey, 10)).map((h) => ({
-          at: formatStamp(h.at),
-          by: h.by,
-          action: h.action,
-          wording: h.wording,
-        }))
-      : [];
+    // Always, not only while it is edited: after a put-back the earlier versions
+    // are still there, and this is how they are brought back.
+    const history = (await wordingHistory(key as TemplateKey, 10)).map((h) => ({
+      at: formatStamp(h.at),
+      by: h.by,
+      action: h.action,
+      wording: h.wording,
+    }));
     return { current: wordingFor(key) ?? builtIn, builtIn, edited: edited.has(key), history };
   };
 

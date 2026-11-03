@@ -5,6 +5,7 @@ import { dateToIso, todayInOps } from './dates';
 import { render, toHtml, toPlain, type MessageContext, type TemplateKey } from './messages';
 import { isUrgent, renderStaff, type StaffContext, type StaffEvent } from './staff-messages';
 import { findContactByEmail, sendEmail, sendSms, upsertContact } from './ghl';
+import { loadSettings } from './settings';
 
 /**
  * The only way anything leaves this system.
@@ -227,6 +228,9 @@ export async function notify(
   template: TemplateKey,
   options: NotifyOptions = {},
 ): Promise<{ sent: MessageChannel[]; skipped: MessageChannel[]; errors: string[] }> {
+  // Whatever started this, the message is worded from what the office last saved:
+  // a cold server would otherwise send the built-in text over their edit.
+  await loadSettings();
   const built = await buildContext(bookingId);
   if (!built) return { sent: [], skipped: [], errors: ['Booking not found.'] };
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
+  findUnique: vi.fn(),
   upsert: vi.fn((a: unknown) => ({ op: 'upsert', a })),
   deleteMany: vi.fn((a: unknown) => ({ op: 'deleteMany', a })),
   create: vi.fn((a: unknown) => ({ op: 'create', a })),
@@ -10,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./db', () => ({
   prisma: {
-    setting: { findMany: mocks.findMany, upsert: mocks.upsert, deleteMany: mocks.deleteMany, create: mocks.create },
+    setting: { findMany: mocks.findMany, findUnique: mocks.findUnique, upsert: mocks.upsert, deleteMany: mocks.deleteMany, create: mocks.create },
     $transaction: mocks.transaction,
   },
 }));
@@ -41,6 +42,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-04T18:00:00Z'));
   mocks.findMany.mockResolvedValue([]);
+  mocks.findUnique.mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -193,5 +195,30 @@ describe('wordingHistory', () => {
       { key: 'msglog.1.contract_to_sign', value: 'not json' },
     ]);
     expect(await wordingHistory('contract_to_sign', 10)).toEqual([]);
+  });
+});
+
+describe('saveWording — loading the original and saving really puts it back', () => {
+  it('removes a stored edit when the saved wording is the built-in text again', async () => {
+    mocks.findUnique.mockResolvedValue({ key: 'msg.contract_to_sign', value: JSON.stringify(good()) });
+    const r = await saveWording('contract_to_sign', defaultWording('contract_to_sign'), 'ops');
+    expect(r).toEqual({ ok: true });
+    expect(mocks.deleteMany).toHaveBeenCalledWith({ where: { key: 'msg.contract_to_sign' } });
+  });
+
+  it('does nothing when it is the built-in text and there is no edit to remove', async () => {
+    mocks.findUnique.mockResolvedValue(null);
+    await saveWording('contract_to_sign', defaultWording('contract_to_sign'), 'ops');
+    expect(mocks.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('resetWording — only for messages that exist and can be edited', () => {
+  it('refuses a made-up message, so nothing unbounded is written', async () => {
+    expect((await resetWording('anything_here' as never, 'ops')).ok).toBe(false);
+    expect((await resetWording('truck_changed', 'ops')).ok).toBe(false);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.deleteMany).not.toHaveBeenCalled();
   });
 });

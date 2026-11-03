@@ -154,3 +154,44 @@ describe('wordingValues — what each placeholder becomes', () => {
     expect(v.truck).toBe('your truck');
   });
 });
+
+describe('validateWording — stray brackets are not sent to a renter', () => {
+  const d = () => defaultWording('thank_you');
+
+  it.each(['Hi { firstName }', 'Hi {first_name}', 'Hi {first name}', 'Hi {firstname}', 'Hi {{firstName}}', 'Hi {firstName', 'Hi firstName}', 'Hi {}'])(
+    'refuses %j, since it would reach the renter with the brackets showing',
+    (sms) => {
+      expect(validateWording('thank_you', { ...d(), sms }).ok).toBe(false);
+    },
+  );
+
+  it('still accepts a proper placeholder', () => {
+    expect(validateWording('thank_you', { ...d(), sms: 'Thanks {firstName}!' }).ok).toBe(true);
+  });
+});
+
+describe('validateWording — the lockbox code and links only go where they already did', () => {
+  it('refuses the lockbox code in a message that never carried it, such as the one sent before signing', () => {
+    for (const key of ['booking_received', 'contract_to_sign', 'contract_nudge', 'rental_confirmed'] as const) {
+      const d = defaultWording(key);
+      const r = validateWording(key, { ...d, sms: `${d.sms} Code {lockboxCode}` });
+      expect(r.ok, key).toBe(false);
+      if (!r.ok) expect(r.errors.join(' ')).toMatch(/lockboxCode/);
+    }
+  });
+
+  it('refuses the lockbox code in the subject of the pickup message', () => {
+    const d = defaultWording('pickup_morning');
+    expect(validateWording('pickup_morning', { ...d, subject: 'Your code {lockboxCode}' }).ok).toBe(false);
+  });
+
+  it('refuses the sign link in a message that never carried it', () => {
+    const d = defaultWording('thank_you');
+    expect(validateWording('thank_you', { ...d, email: `${d.email} {signLink}` }).ok).toBe(false);
+  });
+
+  it('keeps allowing the code where the built-in message has it', () => {
+    const d = defaultWording('pickup_morning');
+    expect(validateWording('pickup_morning', { ...d, sms: `Hi {firstName}, code {lockboxCode}. Photos: {pickupChecklistLink}` }).ok).toBe(true);
+  });
+});

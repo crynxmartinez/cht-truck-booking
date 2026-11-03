@@ -31,6 +31,15 @@ export type PlaceholderName = (typeof PLACEHOLDERS)[number]['name'];
 const NAMES = new Set<string>(PLACEHOLDERS.map((p) => p.name));
 const PLACEHOLDER = /\{([A-Za-z][A-Za-z0-9]*)\}/g;
 
+/**
+ * Does the text still contain a curly bracket once every proper {placeholder}
+ * is taken out? "{ firstName }", "{first_name}", "{{signLink}}" all do, and
+ * would reach the renter with the brackets showing.
+ */
+export function strayBrackets(text: string): boolean {
+  return /[{}]/.test(text.replace(PLACEHOLDER, ''));
+}
+
 export const isPlaceholder = (name: string): name is PlaceholderName => NAMES.has(name);
 
 /** Each placeholder used in the text, once, in the order it first appears. */

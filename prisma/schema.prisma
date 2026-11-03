@@ -248,6 +248,13 @@ model Contract {
   tollAcknowledged   Boolean   @default(false)
   tollAcknowledgedAt DateTime?
 
+  // Same treatment for the fuel and equipment clauses added in contract v2.
+  // Older agreements were signed without them, so these stay false for those.
+  gasAcknowledged      Boolean   @default(false)
+  gasAcknowledgedAt    DateTime?
+  dollyAcknowledged    Boolean   @default(false)
+  dollyAcknowledgedAt  DateTime?
+
   // Audit trail: what they saw, from where, when.
   termsVersion String?
   termsHash    String?
@@ -368,6 +375,12 @@ model MessageLog {
   recipientKey String @default("renter")
   recipientId  String?
   recipient    NotificationRecipient? @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+
+  // The office has dealt with a failed message (called the renter, or it was a
+  // test). A handled failure stops showing under Needs attention. The row and
+  // its error stay, so nothing about what happened is lost.
+  handledAt DateTime?
+  handledBy String?
 
   providerId String?
   // The GHL contact the message was actually delivered to. toAddress records

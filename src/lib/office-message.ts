@@ -18,7 +18,7 @@ const MAX_SUBJECT_LENGTH = 150;
 
 export type OfficeMessageInput = { text: string; subject: string; sms: boolean; email: boolean };
 
-export type MessageHistory = { channel: string; status: string; error: string | null; at: Date };
+export type MessageHistory = { channel: string; to: string | null; status: string; error: string | null; at: Date };
 
 type BookingFacts = { firstName: string; lastName: string; email: string; phone: string; stage: string };
 
@@ -33,10 +33,14 @@ export type Preview = {
 
 export type Prepared = { ok: true; preview: Preview } | { ok: false; errors: string[] };
 
-/** Has the most recent text to this person been refused because they opted out, or have Do Not Disturb on? */
-function textBlocked(history: MessageHistory[]): string | null {
+/**
+ * Has the most recent text to THIS number been refused because they opted out
+ * or have Do Not Disturb on? Judged per number: a text that worked for the
+ * second driver says nothing about the renter, and the reverse.
+ */
+function textBlocked(history: MessageHistory[], phone: string): string | null {
   const latest = history
-    .filter((m) => m.channel === 'SMS')
+    .filter((m) => m.channel === 'SMS' && m.to === phone)
     .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
   if (!latest || latest.status !== 'FAILED') return null;
   const why = explainFailure(latest.error, 'SMS');
@@ -51,6 +55,10 @@ export function prepareOfficeMessage(booking: BookingFacts, input: OfficeMessage
   const subject = input.subject.trim();
 
   if (text.length < 2) errors.push('Write the message first.');
+  // The email template turns [[Label|link]] into a button, so what is shown could differ from where it goes.
+  if (text.includes('[[') || text.includes(']]')) {
+    errors.push('Please take out the double square brackets, which are reserved for buttons in our own emails.');
+  }
   if (!input.sms && !input.email) errors.push('Choose text, email, or both.');
   if (input.sms && text.length > MAX_SMS_LENGTH) {
     errors.push(`A text can be at most ${MAX_SMS_LENGTH} characters; this one is ${text.length}. Shorten it, or send it by email only.`);
@@ -67,7 +75,7 @@ export function prepareOfficeMessage(booking: BookingFacts, input: OfficeMessage
   const recipients: Recipient[] = [];
 
   if (input.sms) {
-    const blocked = textBlocked(history);
+    const blocked = textBlocked(history, booking.phone);
     if (!booking.phone.trim()) {
       warnings.push(`${name} has no phone number on the booking, so no text will be sent.`);
     } else if (blocked) {

@@ -64,8 +64,10 @@ export async function approveContract(contractId: string, approverId?: string | 
     throw new ApprovalError('This booking is already closed, so it cannot be approved.');
   }
 
-  await prisma.contract.update({
-    where: { id: contractId },
+  // Conditional on nobody having signed yet: if two admins approve in the same
+  // instant, the first signature stands and the second changes nothing.
+  const claimed = await prisma.contract.updateMany({
+    where: { id: contractId, counterSignedAt: null },
     data: {
       counterSignedAt: new Date(),
       counterSignedById: admin.id,
@@ -73,6 +75,7 @@ export async function approveContract(contractId: string, approverId?: string | 
       counterSignatureData: admin.signatureData,
     },
   });
+  if (claimed.count === 0) return { alreadySigned: true, bookingId: contract.booking.id };
 
   await logEvent(
     contract.booking.id,
@@ -126,8 +129,8 @@ export async function approveChecklist(checklistId: string, approverId?: string 
   if (!checklist.submittedAt) throw new ApprovalError('The renter has not submitted this yet.');
   if (checklist.counterSignedAt) return { alreadySigned: true, bookingId: checklist.booking.id };
 
-  await prisma.checklist.update({
-    where: { id: checklistId },
+  const claimed = await prisma.checklist.updateMany({
+    where: { id: checklistId, counterSignedAt: null },
     data: {
       counterSignedAt: new Date(),
       counterSignedById: admin.id,
@@ -135,6 +138,8 @@ export async function approveChecklist(checklistId: string, approverId?: string 
       counterSignatureData: admin.signatureData,
     },
   });
+
+  if (claimed.count === 0) return { alreadySigned: true, bookingId: checklist.booking.id };
 
   const isReturn = checklist.phase === 'DROPOFF';
   await logEvent(

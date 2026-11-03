@@ -4,7 +4,7 @@ import { MAX_EMAIL_LENGTH, MAX_SMS_LENGTH, prepareOfficeMessage, type MessageHis
 const booking = { firstName: 'Sample', lastName: 'Renter', email: 'sample@example.com', phone: '+15555550100', stage: 'CONFIRMED' };
 const ok = { text: 'Hi, your truck is ready early.', subject: 'Your truck', sms: true, email: true };
 const blockedHistory: MessageHistory[] = [
-  { channel: 'SMS', status: 'FAILED', error: 'Cannot send message as DND is active for SMS.', at: new Date('2026-11-01T10:00:00Z') },
+  { channel: 'SMS', to: '+15555550100', status: 'FAILED', error: 'Cannot send message as DND is active for SMS.', at: new Date('2026-11-01T10:00:00Z') },
 ];
 
 describe('prepareOfficeMessage — what is about to be sent, and to whom', () => {
@@ -84,30 +84,61 @@ describe('prepareOfficeMessage — never texting past an opt-out or Do Not Distu
   });
 
   it('treats an opt-out the same way', () => {
-    const h: MessageHistory[] = [{ channel: 'SMS', status: 'FAILED', error: 'Cannot send message as +1555 has unsubscribed', at: new Date() }];
+    const h: MessageHistory[] = [{ channel: 'SMS', to: '+15555550100', status: 'FAILED', error: 'Cannot send message as +1555 has unsubscribed', at: new Date() }];
     const r = prepareOfficeMessage(booking, { ...ok, email: false }, h);
     expect(r.ok).toBe(false);
   });
 
   it('judges by the most recent text, so a text that later went through is not blocked', () => {
     const h: MessageHistory[] = [
-      { channel: 'SMS', status: 'FAILED', error: 'Cannot send message as DND is active for SMS.', at: new Date('2026-10-01T10:00:00Z') },
-      { channel: 'SMS', status: 'SENT', error: null, at: new Date('2026-11-01T10:00:00Z') },
+      { channel: 'SMS', to: '+15555550100', status: 'FAILED', error: 'Cannot send message as DND is active for SMS.', at: new Date('2026-10-01T10:00:00Z') },
+      { channel: 'SMS', to: '+15555550100', status: 'SENT', error: null, at: new Date('2026-11-01T10:00:00Z') },
+    ];
+    const r = prepareOfficeMessage(booking, ok, h);
+    expect(r.ok && r.preview.recipients.map((x) => x.channel)).toEqual(['SMS', 'EMAIL']);
+  });
+
+  it('is not fooled by a text that went to somebody else on the same booking', () => {
+    // The renter's number refused; later the second driver's number worked. The
+    // renter is still blocked: judge each number on its own history.
+    const h: MessageHistory[] = [
+      { channel: 'SMS', to: '+15555550100', status: 'FAILED', error: 'Cannot send message as DND is active for SMS.', at: new Date('2026-11-01T10:00:00Z') },
+      { channel: 'SMS', to: '+15555550999', status: 'SENT', error: null, at: new Date('2026-11-02T10:00:00Z') },
+    ];
+    const r = prepareOfficeMessage(booking, { ...ok, email: false }, h);
+    expect(r.ok).toBe(false);
+  });
+
+  it('is not blocked because somebody else on the booking has Do Not Disturb', () => {
+    const h: MessageHistory[] = [
+      { channel: 'SMS', to: '+15555550999', status: 'FAILED', error: 'Cannot send message as DND is active for SMS.', at: new Date() },
     ];
     const r = prepareOfficeMessage(booking, ok, h);
     expect(r.ok && r.preview.recipients.map((x) => x.channel)).toEqual(['SMS', 'EMAIL']);
   });
 
   it('is not put off texting by an unrelated failure', () => {
-    const h: MessageHistory[] = [{ channel: 'SMS', status: 'FAILED', error: 'Request timed out', at: new Date() }];
+    const h: MessageHistory[] = [{ channel: 'SMS', to: '+15555550100', status: 'FAILED', error: 'Request timed out', at: new Date() }];
     const r = prepareOfficeMessage(booking, ok, h);
     expect(r.ok && r.preview.recipients.map((x) => x.channel)).toEqual(['SMS', 'EMAIL']);
   });
 
   it('is not put off by an email failure when texting', () => {
-    const h: MessageHistory[] = [{ channel: 'EMAIL', status: 'FAILED', error: 'DND is active', at: new Date() }];
+    const h: MessageHistory[] = [{ channel: 'EMAIL', to: 'sample@example.com', status: 'FAILED', error: 'DND is active', at: new Date() }];
     const r = prepareOfficeMessage(booking, ok, h);
     expect(r.ok && r.preview.recipients.map((x) => x.channel)).toEqual(['SMS', 'EMAIL']);
+  });
+});
+
+describe('prepareOfficeMessage — typed button syntax', () => {
+  it('refuses double square brackets, which the email template would turn into a button with a hidden link', () => {
+    const r = prepareOfficeMessage(booking, { ...ok, text: 'Pay here [[Pay now|https://example.com]]' }, []);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.join(' ')).toMatch(/square brackets/i);
+  });
+
+  it('is fine with single brackets', () => {
+    expect(prepareOfficeMessage(booking, { ...ok, text: 'Gate code [on the sheet]' }, []).ok).toBe(true);
   });
 });
 

@@ -35,6 +35,8 @@ export function boardWhere(cutoff: Date): Prisma.BookingWhereInput {
 
 export const PAST_PAGE_SIZE = 50;
 const MAX_SEARCH = 100;
+/** Far beyond any real history; stops a typed-in huge number reaching the query. */
+const MAX_PAGE = 100_000;
 
 export type PastShow = 'all' | 'completed' | 'cancelled';
 export type PastParams = { q: string; show: PastShow; page: number };
@@ -49,7 +51,7 @@ export function parsePastParams(raw: Raw): PastParams {
   const showRaw = first(raw.show);
   const show: PastShow = showRaw === 'completed' || showRaw === 'cancelled' ? showRaw : 'all';
   const pageRaw = first(raw.page);
-  const page = /^\d+$/.test(pageRaw) && Number(pageRaw) >= 1 ? Number(pageRaw) : 1;
+  const page = /^\d+$/.test(pageRaw) && Number(pageRaw) >= 1 && Number(pageRaw) <= MAX_PAGE ? Number(pageRaw) : 1;
   return { q, show, page };
 }
 

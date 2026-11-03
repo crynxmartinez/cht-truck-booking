@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('./db', () => ({
   prisma: {
-    contract: { findUnique: h.findContract, update: h.updateContract, count: h.countContracts },
+    contract: { findUnique: h.findContract, updateMany: h.updateContract, count: h.countContracts },
   },
 }));
 vi.mock('./notify', () => ({
@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.mainAdmins.mockResolvedValue([{ id: 'a1', name: 'Diana', email: 'd@x.co', signatureData: 'data:image/png;base64,xx' }]);
   h.countContracts.mockResolvedValue(0);
-  h.updateContract.mockResolvedValue({});
+  h.updateContract.mockResolvedValue({ count: 1 });
   h.notify.mockResolvedValue({ sent: [], skipped: [], errors: [] });
 });
 
@@ -73,6 +73,24 @@ describe('approveContract — only a live booking can be confirmed', () => {
     h.findContract.mockResolvedValue(contract('CANCELLED', { counterSignedAt: new Date() }));
     expect(await approveContract('c1')).toEqual({ alreadySigned: true, bookingId: 'b1' });
     expect(h.updateContract).not.toHaveBeenCalled();
+  });
+});
+
+describe('approveContract — two people approving at the same moment', () => {
+  it('only lets the first signature stand: the write is conditional on nobody having signed yet', async () => {
+    h.findContract.mockResolvedValue(contract('AWAITING_APPROVAL'));
+    await approveContract('c1');
+    const arg = h.updateContract.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(arg.where).toEqual({ id: 'c1', counterSignedAt: null });
+  });
+
+  it('when the other person got there first, changes nothing, logs nothing, and says it is already signed', async () => {
+    h.findContract.mockResolvedValue(contract('AWAITING_APPROVAL'));
+    h.updateContract.mockResolvedValue({ count: 0 });
+    expect(await approveContract('c1')).toEqual({ alreadySigned: true, bookingId: 'b1' });
+    expect(h.logEvent).not.toHaveBeenCalled();
+    expect(h.setStage).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
   });
 });
 

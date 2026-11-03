@@ -56,6 +56,12 @@ describe('parsePastParams — what the Past rentals page was asked for', () => {
     expect(parsePastParams({ page: '2.5' })).toMatchObject({ page: 1 });
   });
 
+  it('treats an absurdly large page number as the first page, so it cannot crash the query', () => {
+    expect(parsePastParams({ page: '99999999999999999999' }).page).toBe(1);
+    expect(parsePastParams({ page: '100001' }).page).toBe(1);
+    expect(parsePastParams({ page: '100000' }).page).toBe(100000);
+  });
+
   it('takes the first value when a parameter is repeated, and caps the search length', () => {
     expect(parsePastParams({ q: ['one', 'two'] }).q).toBe('one');
     expect(parsePastParams({ q: 'x'.repeat(500) }).q).toHaveLength(100);

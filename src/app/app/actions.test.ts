@@ -146,3 +146,21 @@ describe('moving a card or reopening a booking — the two paths that used to sk
     await expect(moveStage('b1', 'CONFIRMED')).rejects.toThrow('connection reset');
   });
 });
+
+describe('moveStage — the office calendar follows a hand move', () => {
+  // Found on the live data: a finished rental dragged back to "Needs Approval"
+  // kept its solid, confirmed title on Google, because nothing re-synced it.
+  it('re-syncs the calendar after a stage is moved by hand, so the title and status match', async () => {
+    h.setStage.mockResolvedValue(undefined);
+    const res = await moveStage('b1', 'AWAITING_APPROVAL');
+    expect(res.ok).toBe(true);
+    expect(h.syncBookingToCalendar).toHaveBeenCalledWith('b1');
+  });
+
+  it('does not touch the calendar when the move was refused', async () => {
+    h.setStage.mockRejectedValue({ code: '23P01', message: 'conflicting key value violates exclusion constraint "bookings_no_overlap"' });
+    const res = await moveStage('b1', 'CONTRACT_SENT');
+    expect(res.ok).toBe(false);
+    expect(h.syncBookingToCalendar).not.toHaveBeenCalled();
+  });
+});

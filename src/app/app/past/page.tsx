@@ -39,16 +39,17 @@ export default async function PastRentalsPage({
   const params = parsePastParams(await searchParams);
   const where = pastWhere(params);
 
-  const [total, bookings] = await Promise.all([
-    prisma.booking.count({ where }),
-    prisma.booking.findMany({
-      where,
-      include: { truck: { select: { code: true } } },
-      orderBy: pastOrder(),
-      skip: (params.page - 1) * PAST_PAGE_SIZE,
-      take: PAST_PAGE_SIZE,
-    }),
-  ]);
+  const total = await prisma.booking.count({ where });
+  const pages = Math.max(1, Math.ceil(total / PAST_PAGE_SIZE));
+  // A page number past the end shows the last page, not an empty screen.
+  const page = Math.min(params.page, pages);
+  const bookings = await prisma.booking.findMany({
+    where,
+    include: { truck: { select: { code: true } } },
+    orderBy: pastOrder(),
+    skip: (page - 1) * PAST_PAGE_SIZE,
+    take: PAST_PAGE_SIZE,
+  });
 
   const rows: PastRow[] = bookings.map((b) => ({
     id: b.id,
@@ -63,7 +64,6 @@ export default async function PastRentalsPage({
     closed: formatStamp(b.completedAt ?? b.cancelledAt ?? b.updatedAt),
   }));
 
-  const pages = Math.max(1, Math.ceil(total / PAST_PAGE_SIZE));
   const tab = (show: PastParams['show'], label: string) => (
     <Link
       href={href(params, { show, page: 1 })}
@@ -120,17 +120,17 @@ export default async function PastRentalsPage({
 
           <p className="tiny" style={{ marginTop: 12 }}>
             {total} rental{total === 1 ? '' : 's'}
-            {pages > 1 ? ` · page ${params.page} of ${pages}` : ''}
+            {pages > 1 ? ` · page ${page} of ${pages}` : ''}
           </p>
           {pages > 1 ? (
             <div style={{ display: 'flex', gap: 8 }}>
-              {params.page > 1 ? (
-                <Link className="btn ghost small" href={href(params, { page: params.page - 1 })}>
+              {page > 1 ? (
+                <Link className="btn ghost small" href={href(params, { page: page - 1 })}>
                   &larr; Newer
                 </Link>
               ) : null}
-              {params.page < pages ? (
-                <Link className="btn ghost small" href={href(params, { page: params.page + 1 })}>
+              {page < pages ? (
+                <Link className="btn ghost small" href={href(params, { page: page + 1 })}>
                   Older &rarr;
                 </Link>
               ) : null}

@@ -55,6 +55,10 @@ export async function moveStage(bookingId: string, stage: Stage): Promise<Action
       await completeBooking(bookingId, who);
     } else {
       await setStage(bookingId, stage, who, 'Moved by hand');
+      // The calendar title and status depend on the stage (a rental waiting on
+      // approval is shown unconfirmed), so a hand move has to re-sync it.
+      // Completing already does this itself.
+      await syncBookingToCalendar(bookingId);
     }
   } catch (err) {
     const refusal = truckTaken(err);
@@ -474,17 +478,20 @@ async function prepareFor(bookingId: string, raw: unknown) {
   });
   if (!booking) return { ok: false as const, errors: ['That booking no longer exists.'] };
 
+  // Only texts to this renter's own number: the second driver's texts are logged
+  // against the same booking and must not stand in for the renter's history.
   const history = await prisma.messageLog.findMany({
-    where: { bookingId, recipientId: null, channel: 'SMS' },
+    where: { bookingId, channel: 'SMS', toAddress: booking.phone },
     orderBy: { createdAt: 'desc' },
-    take: 20,
-    select: { channel: true, status: true, error: true, createdAt: true },
+    take: 50,
+    select: { channel: true, toAddress: true, status: true, error: true, createdAt: true, sentAt: true },
   });
 
   return prepareOfficeMessage(
     booking,
     input,
-    history.map((m) => ({ channel: m.channel, status: m.status, error: m.error, at: m.createdAt })),
+    // A message that was resent keeps its creation time, so when it went out is the better clock.
+    history.map((m) => ({ channel: m.channel, to: m.toAddress, status: m.status, error: m.error, at: m.sentAt ?? m.createdAt })),
   );
 }
 

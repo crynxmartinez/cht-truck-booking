@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   update: vi.fn(),
+  updateMany: vi.fn(),
   findUnique: vi.fn(),
   updateManyContracts: vi.fn(),
   logEvent: vi.fn(),
@@ -13,7 +14,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('./db', () => ({
   prisma: {
-    booking: { update: h.update, findUnique: h.findUnique },
+    booking: { update: h.update, updateMany: h.updateMany, findUnique: h.findUnique },
     contract: { updateMany: h.updateManyContracts },
   },
 }));
@@ -35,6 +36,7 @@ import { cancelBooking, reopenBooking } from './bookings';
 beforeEach(() => {
   vi.clearAllMocks();
   h.update.mockResolvedValue({});
+  h.updateMany.mockResolvedValue({ count: 1 });
   h.findUnique.mockResolvedValue({ stage: 'CONFIRMED' });
   h.updateManyContracts.mockResolvedValue({ count: 1 });
   h.notify.mockResolvedValue({ sent: ['SMS', 'EMAIL'], skipped: [], errors: [] });
@@ -68,8 +70,8 @@ describe('reopenBooking', () => {
 describe('cancelBooking — telling the renter', () => {
   it('cancels, voids the unsigned paperwork, tells the office and clears the calendar, as before', async () => {
     await cancelBooking('b1', 'No longer needed', 'ops');
-    expect(h.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'b1' }, data: expect.objectContaining({ stage: 'CANCELLED' }) }),
+    expect(h.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 'b1' }), data: expect.objectContaining({ stage: 'CANCELLED' }) }),
     );
     expect(h.updateManyContracts).toHaveBeenCalled();
     expect(h.notifyStaff).toHaveBeenCalledWith('b1', 'cancelled', { detail: 'No longer needed' });
@@ -95,20 +97,20 @@ describe('cancelBooking — telling the renter', () => {
 
   it('tells them after the cancellation has happened, never before', async () => {
     await cancelBooking('b1', 'x', 'ops', { tellRenter: 'cancelled' });
-    expect(h.update.mock.invocationCallOrder[0]).toBeLessThan(h.notify.mock.invocationCallOrder[0]);
+    expect(h.updateMany.mock.invocationCallOrder[0]).toBeLessThan(h.notify.mock.invocationCallOrder[0]);
   });
 
   it('does not tell someone who already has the truck, even if asked, but still cancels', async () => {
     h.findUnique.mockResolvedValue({ stage: 'IN_USE' });
     await cancelBooking('b1', 'x', 'ops', { tellRenter: 'cancelled' });
-    expect(h.update).toHaveBeenCalled();
+    expect(h.updateMany).toHaveBeenCalled();
     expect(h.notify).not.toHaveBeenCalled();
   });
 
   it('does nothing at all to a booking that is already cancelled: no second alert, no second message', async () => {
     h.findUnique.mockResolvedValue({ stage: 'CANCELLED' });
     await cancelBooking('b1', 'x', 'ops', { tellRenter: 'cancelled' });
-    expect(h.update).not.toHaveBeenCalled();
+    expect(h.updateMany).not.toHaveBeenCalled();
     expect(h.notifyStaff).not.toHaveBeenCalled();
     expect(h.notify).not.toHaveBeenCalled();
   });
@@ -116,7 +118,7 @@ describe('cancelBooking — telling the renter', () => {
   it('refuses a booking that does not exist', async () => {
     h.findUnique.mockResolvedValue(null);
     await expect(cancelBooking('nope', 'x', 'ops')).rejects.toThrow(/not found/i);
-    expect(h.update).not.toHaveBeenCalled();
+    expect(h.updateMany).not.toHaveBeenCalled();
   });
 
   it('keeps the cancellation when the message could not be sent, and records that the renter was not told', async () => {
@@ -133,5 +135,43 @@ describe('cancelBooking — telling the renter', () => {
     expect(h.removeFromCalendar).toHaveBeenCalled();
     expect(h.logEvent).toHaveBeenCalledWith('b1', 'notify_failed', expect.stringMatching(/GHL down/), 'ops');
     quiet.mockRestore();
+  });
+});
+
+describe('cancelBooking — two things happening at the same moment', () => {
+  it('only cancels a booking that is not already cancelled, in the write itself', async () => {
+    await cancelBooking('b1', 'x', 'ops');
+    const arg = h.updateMany.mock.calls[0][0] as { where: { id: string; stage: unknown } };
+    expect(arg.where).toEqual({ id: 'b1', stage: { not: 'CANCELLED' } });
+  });
+
+  it('does nothing further when somebody else cancelled it a moment ago: no alert, no message, no calendar change', async () => {
+    h.updateMany.mockResolvedValue({ count: 0 });
+    await cancelBooking('b1', 'x', 'ops', { tellRenter: 'cancelled' });
+    expect(h.updateManyContracts).not.toHaveBeenCalled();
+    expect(h.notifyStaff).not.toHaveBeenCalled();
+    expect(h.notify).not.toHaveBeenCalled();
+    expect(h.removeFromCalendar).not.toHaveBeenCalled();
+    expect(h.logEvent).not.toHaveBeenCalled();
+  });
+
+  it('can be told to cancel only if the booking is still in the stages it was chosen for', async () => {
+    await cancelBooking('b1', 'Auto-released', 'system', {
+      tellRenter: 'released',
+      onlyIfStageIn: ['CONTRACT_SENT', 'ADDITIONAL_DRIVER'],
+    });
+    const arg = h.updateMany.mock.calls[0][0] as { where: { stage: unknown } };
+    expect(arg.where.stage).toEqual({ in: ['CONTRACT_SENT', 'ADDITIONAL_DRIVER'] });
+  });
+
+  it('leaves a renter alone who signed after the sweep picked their booking, and says nothing to them', async () => {
+    // The sweep chose it while it was unsigned; by the time it gets there it has moved on.
+    h.updateMany.mockResolvedValue({ count: 0 });
+    await cancelBooking('b1', 'Auto-released', 'system', {
+      tellRenter: 'released',
+      onlyIfStageIn: ['CONTRACT_SENT', 'ADDITIONAL_DRIVER'],
+    });
+    expect(h.notify).not.toHaveBeenCalled();
+    expect(h.notifyStaff).not.toHaveBeenCalled();
   });
 });

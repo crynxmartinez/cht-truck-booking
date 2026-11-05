@@ -10,6 +10,7 @@ import { purgeAbandonedDrafts, purgeToTarget, reconcileOrphanBlobs } from '@/lib
 import { storageSweep } from '@/lib/storage-alert';
 import { runStorageCheck } from '@/lib/storage-check';
 import { cancelBooking } from '@/lib/bookings';
+import { UNSIGNED_STAGES, unsignedReleaseWhere } from '@/lib/unsigned-release';
 import { sendDuePickupMessage } from '@/lib/pickup-release';
 
 export const runtime = 'nodejs';
@@ -125,17 +126,22 @@ async function dailySweep(today: string) {
   // --- release trucks held by contracts nobody signed
   const staleCutoff = new Date(Date.now() - config.unsignedReleaseHours * 3600_000);
   const stale = await prisma.booking.findMany({
-    where: {
-      stage: { in: [Stage.CONTRACT_SENT, Stage.ADDITIONAL_DRIVER] },
-      createdAt: { lte: staleCutoff },
-    },
+    where: unsignedReleaseWhere(staleCutoff),
     select: { id: true, reference: true },
   });
   for (const b of stale) {
-    // Nobody at a desk is about to phone this renter, so they are told automatically.
-    await cancelBooking(b.id, `Auto-released — unsigned after ${config.unsignedReleaseHours} hours`, 'system', {
-      tellRenter: 'released',
-    });
+    // One booking failing must not stop the rest of the daily sweep (overdue
+    // trucks, closing returned rentals) from running.
+    try {
+      // Nobody at a desk is about to phone this renter, so they are told automatically.
+      await cancelBooking(b.id, `Auto-released — unsigned after ${config.unsignedReleaseHours} hours`, 'system', {
+        tellRenter: 'released',
+        // Only if it is still waiting on a signature when we get to it.
+        onlyIfStageIn: UNSIGNED_STAGES,
+      });
+    } catch (err) {
+      console.error('auto-release failed', b.reference, err);
+    }
   }
   out.released = stale.length;
 

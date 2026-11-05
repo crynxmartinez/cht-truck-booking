@@ -48,22 +48,28 @@ export async function completeBooking(bookingId: string, actor = 'system') {
  * and a failed text shows under Needs attention like any other.
  *
  * Cancelling a booking that is already cancelled does nothing, so a double
- * click or a retry cannot alert the office or message the renter twice.
+ * click or a retry cannot alert the office or message the renter twice. The
+ * check is in the write itself, not just before it, so two people cancelling at
+ * the same instant cannot both go on to alert and message. `onlyIfStageIn` lets
+ * the daily sweep say "only if it is still waiting on a signature": a renter who
+ * signs a moment after the sweep picked their booking is left alone.
  */
 export async function cancelBooking(
   bookingId: string,
   reason: string,
   actor = 'system',
-  options: { tellRenter?: NoticeKind | false } = {},
+  options: { tellRenter?: NoticeKind | false; onlyIfStageIn?: Stage[] } = {},
 ) {
   const before = await prisma.booking.findUnique({ where: { id: bookingId }, select: { stage: true } });
   if (!before) throw new Error('Booking not found.');
   if (before.stage === Stage.CANCELLED) return;
 
-  await prisma.booking.update({
-    where: { id: bookingId },
+  const cancelled = await prisma.booking.updateMany({
+    where: { id: bookingId, stage: options.onlyIfStageIn ? { in: options.onlyIfStageIn } : { not: Stage.CANCELLED } },
     data: { stage: Stage.CANCELLED, cancelledAt: new Date(), cancelledReason: reason || null },
   });
+  // Somebody else cancelled it, or it moved on, since it was read: nothing more to do.
+  if (cancelled.count === 0) return;
   // Any outstanding paperwork is dead once the booking is off.
   await prisma.contract.updateMany({
     where: { bookingId, status: { in: ['SENT', 'VIEWED'] } },

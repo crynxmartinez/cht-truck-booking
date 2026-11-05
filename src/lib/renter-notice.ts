@@ -12,7 +12,11 @@ export type NoticeTemplate = 'booking_cancelled' | 'booking_released';
 
 const BEFORE_COLLECTION = ['NEW_BOOKING', 'CONTRACT_SENT', 'ADDITIONAL_DRIVER', 'AWAITING_APPROVAL', 'CONFIRMED', 'PICKUP_DAY'];
 
+/** Stages where something still waits on a signature from the renter or their second driver. */
+const UNSIGNED = ['NEW_BOOKING', 'CONTRACT_SENT', 'ADDITIONAL_DRIVER'];
+
 export function renterNotice(kind: NoticeKind | false | undefined, stageBefore: string): NoticeTemplate | null {
   if (!kind || !BEFORE_COLLECTION.includes(stageBefore)) return null;
-  return kind === 'released' ? 'booking_released' : 'booking_cancelled';
+  if (kind === 'released') return UNSIGNED.includes(stageBefore) ? 'booking_released' : null;
+  return 'booking_cancelled';
 }

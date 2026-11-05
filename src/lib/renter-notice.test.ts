@@ -16,8 +16,16 @@ describe('renterNotice — should the renter be told this booking is off?', () =
     for (const stage of BEFORE_COLLECTION) expect(renterNotice('cancelled', stage), stage).toBe('booking_cancelled');
   });
 
-  it('uses the released message for a truck let go because nobody signed', () => {
-    for (const stage of BEFORE_COLLECTION) expect(renterNotice('released', stage), stage).toBe('booking_released');
+  it('uses the released message for a truck let go because paperwork was never signed', () => {
+    for (const stage of ['NEW_BOOKING', 'CONTRACT_SENT', 'ADDITIONAL_DRIVER']) {
+      expect(renterNotice('released', stage), stage).toBe('booking_released');
+    }
+  });
+
+  it('never says "released for want of a signature" to a renter who has signed everything and been approved', () => {
+    for (const stage of ['AWAITING_APPROVAL', 'CONFIRMED', 'PICKUP_DAY']) {
+      expect(renterNotice('released', stage), stage).toBeNull();
+    }
   });
 
   it('never sends one once the renter has the truck, or the rental is over or already cancelled', () => {

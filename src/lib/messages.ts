@@ -393,8 +393,8 @@ export function renderDefault(key: TemplateKey, c: MessageContext): Rendered {
         email: [
           `Hi ${c.firstName},`,
           ``,
-          `We did not receive your signed rental agreement in time, so we have let go of`,
-          `the truck we were holding for you on ${pickup} (reference ${c.reference}). That way`,
+          `We did not receive all of the signed rental paperwork in time, so we have let go`,
+          `of the truck we were holding for you on ${pickup} (reference ${c.reference}). That way`,
           `someone else can use it.`,
           ``,
           `If you still want a truck, just reply to this message. If it is still free,`,
@@ -402,7 +402,7 @@ export function renderDefault(key: TemplateKey, c: MessageContext): Rendered {
           ``,
           SIGNOFF,
         ].join('\n'),
-        sms: `Hi ${c.firstName}, we did not get your signed agreement in time, so we have released the truck for ${pickup}. Still want it? Just reply and we will see what we can do. — Diana`,
+        sms: `Hi ${c.firstName}, we did not get all the signed paperwork in time, so we have released the truck for ${pickup}. Still want it? Just reply and we will see what we can do. — Diana`,
       };
 
     case 'thank_you':

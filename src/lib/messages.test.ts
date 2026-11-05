@@ -172,3 +172,16 @@ describe('the pickup hour in the text follows the setting', () => {
     }
   });
 });
+
+describe('booking_released — true for every renter it can reach', () => {
+  // It also goes out when only the second driver never signed, so it must not
+  // say the renter's own agreement is missing.
+  it('talks about the paperwork, not "your" agreement', () => {
+    const r = render('booking_released', {
+      firstName: 'Ana', reference: 'CHT-T', truckCode: 'A', pickupDate: '2026-12-03', returnDate: '2026-12-05',
+    });
+    const all = `${r.subject}\n${r.email}\n${r.sms}`;
+    expect(all).not.toMatch(/your signed/i);
+    expect(all).toMatch(/paperwork/i);
+  });
+});

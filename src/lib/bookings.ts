@@ -1,6 +1,7 @@
 import { ChecklistPhase, ContractType, Stage } from '@prisma/client';
 import { prisma } from './db';
-import { logEvent, notifyStaff, setStage } from './notify';
+import { logEvent, notify, notifyStaff, setStage } from './notify';
+import { renterNotice, type NoticeKind, type NoticeTemplate } from './renter-notice';
 import { markPurgeEligible } from './storage';
 import { newToken } from './tokens';
 import { NoTruckAvailableError } from './availability';
@@ -37,7 +38,28 @@ export async function completeBooking(bookingId: string, actor = 'system') {
   await markPurgeEligible(bookingId);
 }
 
-export async function cancelBooking(bookingId: string, reason: string, actor = 'system') {
+/**
+ * Cancel a booking.
+ *
+ * `tellRenter` says whether the renter is also messaged: 'cancelled' when the
+ * office chose to, 'released' when the system let the truck go because nobody
+ * signed. Nothing is sent once the renter has the truck. A message that cannot
+ * be sent never undoes the cancellation; it is recorded on the booking instead,
+ * and a failed text shows under Needs attention like any other.
+ *
+ * Cancelling a booking that is already cancelled does nothing, so a double
+ * click or a retry cannot alert the office or message the renter twice.
+ */
+export async function cancelBooking(
+  bookingId: string,
+  reason: string,
+  actor = 'system',
+  options: { tellRenter?: NoticeKind | false } = {},
+) {
+  const before = await prisma.booking.findUnique({ where: { id: bookingId }, select: { stage: true } });
+  if (!before) throw new Error('Booking not found.');
+  if (before.stage === Stage.CANCELLED) return;
+
   await prisma.booking.update({
     where: { id: bookingId },
     data: { stage: Stage.CANCELLED, cancelledAt: new Date(), cancelledReason: reason || null },
@@ -50,6 +72,24 @@ export async function cancelBooking(bookingId: string, reason: string, actor = '
   await logEvent(bookingId, 'cancelled', reason || 'Cancelled', actor);
   await notifyStaff(bookingId, 'cancelled', { detail: reason || null });
   await removeBookingFromCalendar(bookingId);
+
+  const template = renterNotice(options.tellRenter, before.stage);
+  if (template) await tellRenter(bookingId, template, actor);
+}
+
+/** Send the renter's notice and record what happened. Never throws: the cancellation already stands. */
+async function tellRenter(bookingId: string, template: NoticeTemplate, actor: string) {
+  try {
+    const res = await notify(bookingId, template, { force: true });
+    if (res.sent.length) {
+      await logEvent(bookingId, 'renter_told', `Renter told it was ${template === 'booking_released' ? 'released' : 'cancelled'}, by ${res.sent.join(' and ').toLowerCase()}`, actor);
+    } else {
+      await logEvent(bookingId, 'notify_failed', `Could not tell the renter: ${res.errors.join('; ') || 'nothing was sent'}`, actor);
+    }
+  } catch (err) {
+    console.error('renter notice failed', bookingId, err);
+    await logEvent(bookingId, 'notify_failed', `Could not tell the renter: ${err instanceof Error ? err.message : String(err)}`, actor);
+  }
 }
 
 /** Put a cancelled or auto-released booking back in play. */

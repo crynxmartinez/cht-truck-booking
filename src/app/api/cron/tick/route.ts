@@ -132,7 +132,10 @@ async function dailySweep(today: string) {
     select: { id: true, reference: true },
   });
   for (const b of stale) {
-    await cancelBooking(b.id, `Auto-released — unsigned after ${config.unsignedReleaseHours} hours`, 'system');
+    // Nobody at a desk is about to phone this renter, so they are told automatically.
+    await cancelBooking(b.id, `Auto-released — unsigned after ${config.unsignedReleaseHours} hours`, 'system', {
+      tellRenter: 'released',
+    });
   }
   out.released = stale.length;
 

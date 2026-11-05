@@ -67,6 +67,8 @@ const RENTER: Record<TemplateKey, { title: string; when: string }> = {
   pickup_no_show_check: { title: 'Pickup day: final text', when: 'On the pickup day, only while the pickup photos are still missing. The last one of the day.' },
   return_day: { title: 'Return day', when: 'On the day the truck is due back, at the return-text time in Settings.' },
   overdue: { title: 'Truck is overdue', when: 'At the daily check, when the truck is a day or more past its return date.' },
+  booking_cancelled: { title: 'Booking cancelled', when: 'When the office cancels a booking and chooses to tell the renter. Never sent once the renter has the truck.' },
+  booking_released: { title: 'Truck released, agreement not signed', when: 'Automatically, when an agreement is still unsigned after the number of hours set in Settings and the truck is let go.' },
   thank_you: { title: 'Thank you', when: 'When the renter submits their return photos.' },
 };
 

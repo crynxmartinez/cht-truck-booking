@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   syncBookingToCalendar: vi.fn(),
   setStage: vi.fn(),
   reopenBooking: vi.fn(),
+  cancelBooking: vi.fn(),
   pending: [] as Array<Promise<unknown>>,
   NoTruckAvailableError: class NoTruckAvailableError extends Error {},
   SwapNotAllowedError: class SwapNotAllowedError extends Error {},
@@ -29,7 +30,7 @@ vi.mock('@/lib/notify', () => ({
 vi.mock('@/lib/calendar-sync', () => ({ syncBookingToCalendar: h.syncBookingToCalendar }));
 vi.mock('@/lib/db', () => ({ prisma: {} }));
 vi.mock('@/lib/bookings', () => ({
-  cancelBooking: vi.fn(),
+  cancelBooking: h.cancelBooking,
   completeBooking: vi.fn(),
   reopenBooking: h.reopenBooking,
 }));
@@ -37,7 +38,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 // Run the post-response work for real, and keep hold of it so a test can wait.
 vi.mock('next/server', () => ({ after: (fn: () => Promise<unknown>) => h.pending.push(fn()) }));
 
-import { moveStage, reopen, switchTruck } from './actions';
+import { cancel, moveStage, reopen, switchTruck } from './actions';
 
 const moved = { id: 'b1', truck: { code: 'B' }, previousTruckCode: 'A' };
 
@@ -162,5 +163,32 @@ describe('moveStage — the office calendar follows a hand move', () => {
     const res = await moveStage('b1', 'CONTRACT_SENT');
     expect(res.ok).toBe(false);
     expect(h.syncBookingToCalendar).not.toHaveBeenCalled();
+  });
+});
+
+describe('cancel — the office decides whether the renter is told', () => {
+  it('does not message the renter unless the office said to', async () => {
+    h.cancelBooking.mockResolvedValue(undefined);
+    await cancel('b1', 'No longer needed');
+    expect(h.cancelBooking).toHaveBeenCalledWith('b1', 'No longer needed', 'ops', { tellRenter: false });
+  });
+
+  it('tells the renter when the office said to, and says so', async () => {
+    h.cancelBooking.mockResolvedValue(undefined);
+    const res = await cancel('b1', 'No longer needed', true);
+    expect(h.cancelBooking).toHaveBeenCalledWith('b1', 'No longer needed', 'ops', { tellRenter: 'cancelled' });
+    expect(res.ok && res.message).toMatch(/renter .*told|renter was told|is being told/i);
+  });
+
+  it('only a real true counts: anything else from the browser means do not message', async () => {
+    h.cancelBooking.mockResolvedValue(undefined);
+    await cancel('b1', 'x', 'true' as never);
+    expect(h.cancelBooking).toHaveBeenCalledWith('b1', 'x', 'ops', { tellRenter: false });
+  });
+
+  it('says plainly that nobody was messaged when they were not', async () => {
+    h.cancelBooking.mockResolvedValue(undefined);
+    const res = await cancel('b1', 'x', false);
+    expect(res.ok && res.message).toMatch(/not messaged|did not message|no message|nobody was told/i);
   });
 });

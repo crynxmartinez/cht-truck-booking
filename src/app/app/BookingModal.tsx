@@ -533,7 +533,12 @@ export function BookingModal({
               disabled={pending}
               onClick={() => {
                 const reason = window.prompt('Why is this being cancelled?') ?? '';
-                if (reason !== null && reason.trim()) run(() => cancel(c.id, reason));
+                if (reason !== null && reason.trim()) {
+                  const tell = window.confirm(
+                    'Send the renter a text and an email saying their booking is cancelled?\n\nOK = send it\nCancel = do not send (you will tell them yourself)',
+                  );
+                  run(() => cancel(c.id, reason, tell));
+                }
               }}
             >
               Cancel booking

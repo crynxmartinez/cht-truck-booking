@@ -30,6 +30,8 @@ export const EDITABLE: TemplateKey[] = [
   'pickup_no_show_check',
   'return_day',
   'overdue',
+  'booking_cancelled',
+  'booking_released',
   'thank_you',
 ];
 

@@ -27,8 +27,8 @@ describe('which messages can be edited', () => {
   });
 
   it('allows every other message', () => {
-    expect(EDITABLE).toHaveLength(12);
-    expect(new Set([...EDITABLE, ...LOCKED]).size).toBe(13);
+    expect(EDITABLE).toHaveLength(14);
+    expect(new Set([...EDITABLE, ...LOCKED]).size).toBe(15);
   });
 });
 

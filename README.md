@@ -198,6 +198,14 @@ The copy is written for a phone glance — truck, date and name first, no
 greeting. Every one fits in a single SMS segment.
 
 `STAFF_SMS_ENABLED=false` keeps the emails and drops the routine texts.
+
+**The renter is told when their booking is off.** When an unsigned agreement is released
+after the hours set in Settings, the renter is sent `booking_released` automatically. When the
+office cancels from the CRM, a prompt asks whether to send `booking_cancelled`, so the office can
+phone them instead. Nothing is sent once the renter has the truck, cancelling a booking that is
+already cancelled does nothing, and a message that cannot be sent never undoes the cancellation:
+it is recorded on the booking (`renter_told` or `notify_failed`). The wording is editable on the
+Messages page.
 Overdue and reschedule still text regardless, because they need action today.
 
 Diana's GHL contact id is cached in `Setting` under `ghl.staff.contactId`, so

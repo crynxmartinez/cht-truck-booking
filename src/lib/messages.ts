@@ -28,6 +28,8 @@ export type TemplateKey =
   | 'pickup_no_show_check'
   | 'return_day'
   | 'overdue'
+  | 'booking_cancelled'
+  | 'booking_released'
   | 'thank_you';
 
 export type Rendered = {
@@ -366,6 +368,41 @@ export function renderDefault(key: TemplateKey, c: MessageContext): Rendered {
           SIGNOFF,
         ].join('\n'),
         sms: `Hi ${c.firstName}, ${truck} was due back ${back} and hasn't been returned. Please call or reply today. — Diana, CHT`,
+      };
+
+    case 'booking_cancelled':
+      return {
+        subject: `Your truck rental for ${pickup} has been cancelled`,
+        email: [
+          `Hi ${c.firstName},`,
+          ``,
+          `Your Cory Home Team truck rental for ${pickup} (reference ${c.reference}) has been`,
+          `cancelled, and the truck is no longer being held for you.`,
+          ``,
+          `If this is a surprise, or you would still like a truck, just reply to this`,
+          `message and we will help you.`,
+          ``,
+          SIGNOFF,
+        ].join('\n'),
+        sms: `Hi ${c.firstName}, your Cory Home Team truck rental for ${pickup} has been cancelled. If that is a surprise, or you still need a truck, just reply. — Diana`,
+      };
+
+    case 'booking_released':
+      return {
+        subject: `We have released the truck for ${pickup}`,
+        email: [
+          `Hi ${c.firstName},`,
+          ``,
+          `We did not receive your signed rental agreement in time, so we have let go of`,
+          `the truck we were holding for you on ${pickup} (reference ${c.reference}). That way`,
+          `someone else can use it.`,
+          ``,
+          `If you still want a truck, just reply to this message. If it is still free,`,
+          `we will book you in again.`,
+          ``,
+          SIGNOFF,
+        ].join('\n'),
+        sms: `Hi ${c.firstName}, we did not get your signed agreement in time, so we have released the truck for ${pickup}. Still want it? Just reply and we will see what we can do. — Diana`,
       };
 
     case 'thank_you':

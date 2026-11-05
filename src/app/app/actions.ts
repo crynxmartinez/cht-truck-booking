@@ -124,10 +124,20 @@ export async function resend(bookingId: string, template: string): Promise<Actio
   return done(`Resent by ${res.sent.join(' and ').toLowerCase()}.`);
 }
 
-export async function cancel(bookingId: string, reason: string): Promise<ActionResult> {
+/**
+ * Cancel a booking. `tellRenter` is the office's choice, made on screen: only a
+ * real true sends the renter a message, so a missing or malformed value from the
+ * browser means nobody is messaged.
+ */
+export async function cancel(bookingId: string, reason: string, tellRenter: boolean = false): Promise<ActionResult> {
   const who = await actor();
-  await cancelBooking(bookingId, reason || 'Cancelled from the CRM', who);
-  return done('Booking cancelled and the truck released.');
+  const tell = tellRenter === true;
+  await cancelBooking(bookingId, reason || 'Cancelled from the CRM', who, { tellRenter: tell ? 'cancelled' : false });
+  return done(
+    tell
+      ? 'Booking cancelled and the truck released. The renter is being told by text and email; open the booking and look under Messages sent to see it went.'
+      : 'Booking cancelled and the truck released. The renter was not messaged.',
+  );
 }
 
 export async function reopen(bookingId: string): Promise<ActionResult> {

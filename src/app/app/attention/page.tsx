@@ -113,7 +113,7 @@ export default async function AttentionPage({
             <h2>Unsigned over 24 hours</h2>
             <div className="hint">
               Each gets one automatic reminder, and the truck is released if it is still unsigned after{' '}
-              {config.unsignedReleaseHours} hours. The renter is not told when that happens.
+              {config.unsignedReleaseHours} hours. The renter is told by text and email when that happens.
             </div>
             <div className="tablewrap">
               <table className="datatable">

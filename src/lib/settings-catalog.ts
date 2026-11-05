@@ -131,7 +131,7 @@ export const SETTINGS: readonly SettingDef[] = [
     key: 'unsignedReleaseHours',
     group: 'Contracts',
     label: 'Release the truck if the renter never signs',
-    help: 'If a renter has not signed the agreement this many hours after booking, the booking is cancelled so the truck is free for someone else. They are sent one reminder first, at the daily check after 24 hours. At least 48 so there is time to act on it. The renter is not told when it is released.',
+    help: 'If a renter has not signed the agreement this many hours after booking, the booking is cancelled so the truck is free for someone else. They are sent one reminder first, at the daily check after 24 hours. At least 48 so there is time to act on it. The renter is sent a message saying the truck was released.',
     kind: 'int',
     unit: 'hours',
     min: 48,

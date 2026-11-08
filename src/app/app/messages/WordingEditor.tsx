@@ -78,7 +78,7 @@ export function WordingEditor({
       {edited ? <span className="tag amber" style={{ marginLeft: 8 }}>Edited</span> : null}
       <div className="tiny" style={{ margin: '4px 0 8px' }}>
         Words in curly brackets, like {'{firstName}'}, are filled in for each renter. Keep the ones this message needs.
-        This replaces the whole message for everyone from now on.
+        A line like {'[[Sign now|{signLink}]]'} becomes a button in the email. This replaces the whole message for everyone from now on.
       </div>
 
       <label className="tiny" htmlFor={`${messageKey}-subject`}>Email subject</label>

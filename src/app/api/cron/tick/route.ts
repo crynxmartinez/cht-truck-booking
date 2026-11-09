@@ -1,7 +1,8 @@
 import { Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
-import { addDays, hourInOps, isoToDate, todayInOps } from '@/lib/dates';
+import { addDays, dateToIso, hourInOps, isoToDate, todayInOps } from '@/lib/dates';
+import { returnTextDue } from '@/lib/return-text';
 import { isAuthorisedCron } from '@/lib/auth';
 import { loadSettings } from '@/lib/settings';
 import { json } from '@/lib/http';
@@ -46,7 +47,9 @@ export async function GET(req: Request) {
     // Every hour, not at fixed hours: the schedule itself decides what is due.
     // Running only at 6 AM is what stranded a renter approved at 10.
     if (!forceJob || forceJob === 'pickup' || forceJob === 'nopickup') jobs.pickup = await pickupMessages(today);
-    if (should('return', config.returnSmsHour)) jobs.return = await returnDay(today);
+    // Every hour too: a one-day rental is told it is due back from midday, once the renter has the
+    // truck, so the hour cannot be fixed. returnTextDue decides; the database stops any repeat.
+    if (!forceJob || forceJob === 'return') jobs.return = await returnDay(today, hour, forceJob === 'return');
     if (should('sweep', config.dailySweepHour)) jobs.sweep = await dailySweep(today);
   } catch (err) {
     console.error('cron tick failed', err);
@@ -89,18 +92,36 @@ async function pickupMessages(today: string) {
 
 // ---------------------------------------------------------------- 7:00 AM
 
-async function returnDay(today: string) {
-  const due = await prisma.booking.findMany({
+async function returnDay(today: string, hour: number, force: boolean) {
+  const candidates = await prisma.booking.findMany({
     where: { stage: { in: [Stage.IN_USE, Stage.PICKUP_DAY] }, returnDate: isoToDate(today) },
-    select: { id: true, reference: true },
+    select: { id: true, reference: true, stage: true, pickupDate: true, returnDate: true },
   });
+
+  const due = candidates.filter((b) =>
+    returnTextDue({
+      pickupDate: dateToIso(b.pickupDate),
+      returnDate: dateToIso(b.returnDate),
+      stage: b.stage,
+      today,
+      hour,
+      returnHour: config.returnSmsHour,
+      force,
+    }),
+  );
 
   const results: string[] = [];
   for (const b of due) {
-    const res = await notify(b.id, 'return_day');
-    results.push(`${b.reference}: sent ${res.sent.join('+') || 'none'}`);
+    // One booking failing must not stop the rest of the hour's work.
+    try {
+      const res = await notify(b.id, 'return_day');
+      if (res.sent.length) results.push(`${b.reference}: sent ${res.sent.join('+')}`);
+    } catch (err) {
+      console.error('return text failed', b.reference, err);
+      results.push(`${b.reference}: ERROR ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
-  return { count: due.length, results };
+  return { checked: candidates.length, due: due.length, results };
 }
 
 // ---------------------------------------------------------------- 9:00 AM

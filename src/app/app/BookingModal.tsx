@@ -150,18 +150,32 @@ export function BookingModal({
                 </div>
                 <div>
                   <label htmlFor="nl">Length (days)</label>
-                  <input
-                    id="nl"
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={dates.days}
-                    onChange={(e) => setDates({ ...dates, days: Number(e.target.value) })}
-                  />
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {[1, 2, 3].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        className={`btn small ${dates.days === n ? 'primary' : 'ghost'}`}
+                        aria-pressed={dates.days === n}
+                        onClick={() => setDates({ ...dates, days: n })}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                    <input
+                      id="nl"
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={dates.days}
+                      onChange={(e) => setDates({ ...dates, days: Number(e.target.value) })}
+                      style={{ width: 72 }}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="tiny" style={{ marginBottom: 10 }}>
-                The renter is emailed and texted about the new dates automatically.
+                A shorter length frees the later days for other bookings. The renter is emailed and texted about the new dates automatically.
               </div>
               <button className="btn ghost small" onClick={() => setDates(null)} disabled={pending}>
                 Cancel

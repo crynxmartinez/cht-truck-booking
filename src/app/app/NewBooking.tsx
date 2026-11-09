@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { checkAvailability, createBooking, type ActionResult } from './actions';
+import { checkAvailability, createBooking, findRenters, type ActionResult } from './actions';
+import type { Renter } from '@/lib/renter-search';
 import type { TruckOption } from './types';
 
 type Avail = Awaited<ReturnType<typeof checkAvailability>>;
+
+/** The day after, for "free again on". */
+const nextDay = (iso: string) => new Date(new Date(iso + 'T00:00:00Z').getTime() + 86_400_000).toISOString().slice(0, 10);
 
 const pretty = (iso: string) =>
   new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' })
@@ -39,6 +43,9 @@ export function NewBooking({
   const [sendContract, setSendContract] = useState(true);
   const [documentsLater, setDocumentsLater] = useState(true);
   const [note, setNote] = useState('');
+  // Past renters matching what is being typed, so a repeat customer is one click.
+  const [typing, setTyping] = useState('');
+  const [suggest, setSuggest] = useState<Renter[]>([]);
 
   const [avail, setAvail] = useState<Avail>(null);
   const [flash, setFlash] = useState<ActionResult | null>(null);
@@ -69,9 +76,20 @@ export function NewBooking({
     return () => clearTimeout(t);
   }, [pickupDate, days]);
 
+  useEffect(() => {
+    if (typing.trim().length < 3) {
+      setSuggest([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      startPeek(async () => setSuggest(await findRenters(typing)));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [typing]);
+
   const chosenFree = !truckId || Boolean(avail?.free.some((t) => t.id === truckId));
   const canSubmit =
-    Boolean(fullName.trim() && email.trim() && phone.trim() && pickupDate) && days >= 1 && !pending;
+    Boolean(fullName.trim() && email.trim() && phone.trim() && pickupDate) && days >= 1 && !avail?.problem && !pending;
 
   function submit() {
     start(async () => {
@@ -114,11 +132,38 @@ export function NewBooking({
               ref={nameRef}
               type="text"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                setTyping(e.target.value);
+              }}
               placeholder="Victor Barroso"
               autoComplete="off"
             />
           </div>
+
+          {suggest.length ? (
+            <div className="note info" style={{ marginTop: -4 }}>
+              <div className="tiny">Rented before? Tap to fill in their details.</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                {suggest.map((r) => (
+                  <button
+                    key={r.email}
+                    type="button"
+                    className="btn ghost small"
+                    onClick={() => {
+                      setFullName(r.name);
+                      setEmail(r.email);
+                      setPhone(r.phone);
+                      setSuggest([]);
+                      setTyping('');
+                    }}
+                  >
+                    {r.name} &middot; {r.email}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="row two">
             <div>
@@ -129,7 +174,10 @@ export function NewBooking({
                 id="nb-email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setTyping(e.target.value);
+                }}
                 placeholder="them@example.com"
                 autoComplete="off"
               />
@@ -142,7 +190,10 @@ export function NewBooking({
                 id="nb-phone"
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  setTyping(e.target.value);
+                }}
                 placeholder="562 556 8184"
                 autoComplete="off"
               />
@@ -158,14 +209,28 @@ export function NewBooking({
             </div>
             <div>
               <label htmlFor="nb-days">Length (days)</label>
-              <input
-                id="nb-days"
-                type="number"
-                min={1}
-                max={30}
-                value={days}
-                onChange={(e) => setDays(Number(e.target.value))}
-              />
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {[1, 2, 3].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`btn small ${days === n ? 'primary' : 'ghost'}`}
+                    aria-pressed={days === n}
+                    onClick={() => setDays(n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <input
+                  id="nb-days"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={days}
+                  onChange={(e) => setDays(Number(e.target.value))}
+                  style={{ width: 72 }}
+                />
+              </div>
             </div>
           </div>
 
@@ -179,6 +244,7 @@ export function NewBooking({
                 {avail.free.length === 0
                   ? 'nothing free'
                   : `${avail.free.map((t) => `Truck ${t.code}`).join(' and ')} free`}
+                {avail.free.length > 0 ? <span className="tiny"> &middot; back on {pretty(avail.window.end)}, free again {pretty(nextDay(avail.window.end))}</span> : null}
               </div>
               {avail.taken.map((t) => (
                 <div key={t.code} className="tiny">
@@ -188,10 +254,19 @@ export function NewBooking({
             </div>
           ) : null}
 
+          {avail?.problem ? <div className="note alert">{avail.problem}</div> : null}
+          {avail?.notes?.length ? (
+            <div className="note warn">
+              {avail.notes.map((n) => (
+                <div key={n}>{n}</div>
+              ))}
+            </div>
+          ) : null}
+
           <div className="row">
             <label htmlFor="nb-truck">Truck</label>
             <select id="nb-truck" value={truckId} onChange={(e) => setTruckId(e.target.value)}>
-              <option value="">Whichever is free (A first)</option>
+              <option value="">Whichever fits best</option>
               {trucks.map((t) => (
                 <option key={t.id} value={t.id}>
                   Truck {t.code}

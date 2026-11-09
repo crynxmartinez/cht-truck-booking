@@ -9,7 +9,9 @@ import { reassignTruck, NoTruckAvailableError, SwapNotAllowedError } from '@/lib
 import { cancelBooking, completeBooking, reopenBooking } from '@/lib/bookings';
 import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import type { TemplateKey } from '@/lib/messages';
-import { dateToIso, isoToDate, isIsoDate, todayInOps } from '@/lib/dates';
+import { addDays, dateToIso, isoToDate, isIsoDate, latestBookable, todayInOps } from '@/lib/dates';
+import { checkBooking, type Limits } from '@/lib/booking-rules';
+import { distinctRenters, renterWhere, type Renter } from '@/lib/renter-search';
 import { syncBookingToCalendar } from '@/lib/calendar-sync';
 import { OVERLAP_MESSAGE, isOverlapViolation } from '@/lib/overlap-guard';
 import { isEmail, toE164 } from '@/lib/http';
@@ -185,12 +187,59 @@ export type NewBookingInput = {
   note: string;
 };
 
-/** What the office is about to run into, shown live under the date field. */
+/** The rules as they stand now, for the shared booking check. */
+function bookingLimits(): Limits {
+  return {
+    today: todayInOps(),
+    minLeadDays: config.minLeadDays,
+    latest: latestBookable(),
+    customerMaxDays: config.customerMaxDays,
+  };
+}
+
+/**
+ * What the office is about to run into, shown live under the date field: which
+ * trucks are free, anything that would stop the booking, and anything worth a
+ * heads-up that does not (a same-day booking, or one inside the customers'
+ * notice or empty days).
+ */
 export async function checkAvailability(pickupDate: string, days: number) {
   if (!isIsoDate(pickupDate)) return null;
   const { freeTrucksFor } = await import('@/lib/availability');
   await loadSettings();
-  return freeTrucksFor(pickupDate, Number.isFinite(days) ? days : config.rentalBlockDays);
+
+  const length = Number.isFinite(days) ? days : config.rentalBlockDays;
+  const res = await freeTrucksFor(pickupDate, length);
+  const verdict = checkBooking('office', pickupDate, length, bookingLimits());
+  const notes = verdict.ok ? [...verdict.notes] : [];
+
+  // The customers' empty days: free for the office, but not for a customer.
+  const buffer = config.bufferDays;
+  if (verdict.ok && buffer > 0 && res.free.length > 0) {
+    const wide = await freeTrucksFor(addDays(pickupDate, -buffer), Math.min(30, Math.max(1, length) + buffer * 2));
+    if (wide.free.length === 0) {
+      notes.push('This is inside the empty days customers must leave around other rentals. That is fine for the office.');
+    }
+  }
+
+  return { ...res, notes, problem: verdict.ok ? null : verdict.error };
+}
+
+/**
+ * Past renters matching what is being typed, so a repeat customer is one click
+ * rather than retyping their details. Office only; shows at most five.
+ */
+export async function findRenters(query: string): Promise<Renter[]> {
+  await actor();
+  const where = typeof query === 'string' ? renterWhere(query) : null;
+  if (!where) return [];
+  const rows = await prisma.booking.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    take: 40,
+    select: { firstName: true, lastName: true, email: true, phone: true },
+  });
+  return distinctRenters(rows);
 }
 
 /**
@@ -219,13 +268,11 @@ export async function createBooking(input: NewBookingInput): Promise<ActionResul
   if (!isEmail(email)) return { ok: false, error: 'Enter a valid email address.' };
   if (!phone) return { ok: false, error: 'Enter a 10-digit US mobile number.' };
   if (!isIsoDate(input.pickupDate)) return { ok: false, error: 'Pick a valid pickup date.' };
-  if (!Number.isFinite(days) || days < 1 || days > 30) {
-    return { ok: false, error: 'Length must be 1 to 30 days.' };
-  }
-  // The office may book for today; it may not book for last week.
-  if (input.pickupDate < todayInOps()) {
-    return { ok: false, error: 'That date has already passed.' };
-  }
+  // The same rules the screen showed: the office may book today and any length up
+  // to 30 days, but not last week. Anything it does that a customer could not is
+  // noted on the booking below, so Diana can see which rules were skipped.
+  const verdict = checkBooking('office', input.pickupDate, days, bookingLimits());
+  if (!verdict.ok) return { ok: false, error: verdict.error };
 
   const { createBookingWithTruck, NoTruckAvailableError } = await import('@/lib/availability');
   const { createPaperwork } = await import('@/lib/bookings');
@@ -281,7 +328,9 @@ export async function createBooking(input: NewBookingInput): Promise<ActionResul
   await logEvent(
     booking.id,
     'booking_created',
-    `Taken by the office · ${window} · Truck ${truckCode}` + (input.note.trim() ? ` — ${input.note.trim()}` : ''),
+    `Taken by the office · ${window} (${days} ${days === 1 ? 'day' : 'days'}) · Truck ${truckCode}` +
+      (verdict.notes.length ? ` · ${verdict.notes.join(' ')}` : '') +
+      (input.note.trim() ? ` — ${input.note.trim()}` : ''),
     who,
   );
 

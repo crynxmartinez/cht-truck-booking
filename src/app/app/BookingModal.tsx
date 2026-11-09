@@ -3,10 +3,11 @@
 import { Fragment, useEffect, useState, useTransition } from 'react';
 import type { Stage } from '@prisma/client';
 import { STAGE_META, STAGE_LABEL } from '@/lib/stages';
+import type { Ack } from '@/lib/stage-moves';
 import type { ActionResult } from './actions';
 import {
   addNote, approveChecklistAction, approveContractAction, cancel, changeDates,
-  clearFlags, moveStage, reopen, resend, switchTruck,
+  clearFlags, moveCard, reopen, resend, switchTruck,
 } from './actions';
 import type { BookingDetail } from './types';
 import { StaffDropoffUpload } from './StaffDropoffUpload';
@@ -30,6 +31,8 @@ export function BookingModal({
 }) {
   const c = detail.card;
   const [flash, setFlash] = useState<ActionResult | null>(null);
+  // The column this booking is in now. It changes when it is moved from here, so a second move starts from the right place.
+  const [stage, setStage] = useState<Stage>(c.stage);
   const [note, setNote] = useState('');
   // Which row in "Messages sent" is open to show exactly what was sent.
   const [openMessage, setOpenMessage] = useState<number | null>(null);
@@ -54,6 +57,28 @@ export function BookingModal({
     };
   }, [onClose]);
 
+  /**
+   * Move to another stage with the same rules as dragging on the Board. When the
+   * move needs a yes (or an override), the reasons are shown and nothing changes
+   * until the person agrees.
+   */
+  async function moveTo(to: Stage): Promise<ActionResult> {
+    let ack: Ack = 'none';
+    for (;;) {
+      const r = await moveCard(c.id, stage, to, ack, 'button');
+      if (r.ok) {
+        setStage(to);
+        return { ok: true, message: r.message };
+      }
+      if ('error' in r) return { ok: false, error: r.error };
+      const text =
+        r.reasons.join('\n\n') +
+        (r.needs === 'override' ? '\n\nMove it anyway? This is recorded on the booking.' : '\n\nMove it?');
+      if (!window.confirm(text)) return { ok: false, error: 'Not moved.' };
+      ack = r.needs === 'override' ? 'override' : 'confirmed';
+    }
+  }
+
   function run(fn: () => Promise<ActionResult>) {
     startTransition(async () => {
       try {
@@ -71,7 +96,7 @@ export function BookingModal({
           <div>
             <h2>{c.name}</h2>
             <div className="sub">
-              {c.reference} &middot; {STAGE_LABEL[c.stage]} &middot; booked {c.createdLabel}
+              {c.reference} &middot; {STAGE_LABEL[stage]} &middot; booked {c.createdLabel}
             </div>
           </div>
           <button className="x" onClick={onClose} aria-label="Close">
@@ -131,9 +156,9 @@ export function BookingModal({
             {STAGE_META.map((m) => (
               <button
                 key={m.stage}
-                className={m.stage === c.stage ? 'btn primary small' : 'btn ghost small'}
-                disabled={pending || m.stage === c.stage}
-                onClick={() => run(() => moveStage(c.id, m.stage as Stage))}
+                className={m.stage === stage ? 'btn primary small' : 'btn ghost small'}
+                disabled={pending || m.stage === stage}
+                onClick={() => run(() => moveTo(m.stage as Stage))}
                 title={m.blurb}
               >
                 {m.label}

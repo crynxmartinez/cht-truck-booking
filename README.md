@@ -114,6 +114,31 @@ it is stuck.
 
 ---
 
+## Moving cards
+
+A card moves by dragging it to another column (Settings > Board > "Allow dragging cards
+between columns", on by default) or with the **Move to stage** buttons inside it. On a
+narrow screen the Board is a list, so only the buttons are shown. Both go through one
+action, `moveCard`, and one set of rules (`src/lib/stage-moves.ts`), checked again on the
+server:
+
+- Ordinary forward moves just happen.
+- Risky moves ask first and say why: completing (it frees the truck and starts the clock
+  for removing the renter's ID and photos), reopening a completed booking (that clock is
+  stopped), moving back a step, and moving a card to a stage that sends texts on a day
+  they would go out.
+- Confirmed, Pickup Day, In Use and Returned are refused unless the rental agreement is
+  fully signed and approved. The office can override, and the override is written on the
+  booking.
+- A move only happens if the card is still in the column the screen showed, so two people
+  moving the same card cannot both win.
+- After a drag there is an Undo for a few seconds, except for moves into or out of
+  Completed.
+
+Cancelling is not a column: it asks for a reason, so it stays in the booking.
+
+---
+
 ## Booking rules
 
 The renter picks the **pickup date first, then the length: 1, 2 or 3 days** (the

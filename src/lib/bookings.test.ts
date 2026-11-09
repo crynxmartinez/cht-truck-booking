@@ -10,28 +10,32 @@ const h = vi.hoisted(() => ({
   notifyStaff: vi.fn(),
   sync: vi.fn(),
   removeFromCalendar: vi.fn(),
+  updateManyDocuments: vi.fn(),
+  markPurge: vi.fn(),
 }));
 
-vi.mock('./db', () => ({
-  prisma: {
+vi.mock('./db', () => {
+  const tables = {
     booking: { update: h.update, updateMany: h.updateMany, findUnique: h.findUnique },
     contract: { updateMany: h.updateManyContracts },
-  },
-}));
+    document: { updateMany: h.updateManyDocuments },
+  };
+  return { prisma: { ...tables, $transaction: (fn: (tx: typeof tables) => unknown) => fn(tables) } };
+});
 vi.mock('./notify', () => ({
   logEvent: h.logEvent,
   notify: h.notify,
   notifyStaff: h.notifyStaff,
   setStage: vi.fn(),
 }));
-vi.mock('./storage', () => ({ markPurgeEligible: vi.fn() }));
+vi.mock('./storage', () => ({ markPurgeEligible: h.markPurge }));
 vi.mock('./calendar-sync', () => ({
   syncBookingToCalendar: h.sync,
   removeBookingFromCalendar: h.removeFromCalendar,
 }));
 
 import { NoTruckAvailableError } from './availability';
-import { cancelBooking, reopenBooking } from './bookings';
+import { cancelBooking, moveBooking, reopenBooking, StaleMoveError } from './bookings';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -173,5 +177,47 @@ describe('cancelBooking — two things happening at the same moment', () => {
     });
     expect(h.notify).not.toHaveBeenCalled();
     expect(h.notifyStaff).not.toHaveBeenCalled();
+  });
+});
+
+describe('moveBooking', () => {
+  it('moves only if the booking is still in the stage the screen showed', async () => {
+    await moveBooking('b1', 'CONFIRMED' as never, 'PICKUP_DAY' as never, 'ops', 'Moved by drag');
+    expect(h.updateMany).toHaveBeenCalledWith({ where: { id: 'b1', stage: 'CONFIRMED' }, data: { stage: 'PICKUP_DAY' } });
+    expect(h.logEvent).toHaveBeenCalledWith('b1', 'stage_change', 'Moved by drag', 'ops', { from: 'CONFIRMED', to: 'PICKUP_DAY' });
+  });
+
+  it('refuses, and logs nothing, when someone else moved it first', async () => {
+    h.updateMany.mockResolvedValue({ count: 0 });
+    await expect(moveBooking('b1', 'CONFIRMED' as never, 'PICKUP_DAY' as never, 'ops', 'x')).rejects.toBeInstanceOf(StaleMoveError);
+    expect(h.logEvent).not.toHaveBeenCalled();
+    expect(h.markPurge).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for a drop on the same column', async () => {
+    await moveBooking('b1', 'CONFIRMED' as never, 'CONFIRMED' as never, 'ops', 'x');
+    expect(h.updateMany).not.toHaveBeenCalled();
+    expect(h.logEvent).not.toHaveBeenCalled();
+  });
+
+  it('closes out exactly as completing does when moved into Completed', async () => {
+    await moveBooking('b1', 'RETURNED' as never, 'COMPLETED' as never, 'ops', 'x');
+    expect(h.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'b1' }, data: expect.objectContaining({ completedAt: expect.any(Date), overdue: false }) }),
+    );
+    expect(h.markPurge).toHaveBeenCalledWith('b1');
+  });
+
+  it('stops the removal clock and clears the closed date when moved out of Completed', async () => {
+    await moveBooking('b1', 'COMPLETED' as never, 'RETURNED' as never, 'ops', 'x');
+    expect(h.update).toHaveBeenCalledWith({ where: { id: 'b1' }, data: { completedAt: null } });
+    expect(h.updateManyDocuments).toHaveBeenCalledWith({ where: { bookingId: 'b1' }, data: { purgeEligibleAt: null } });
+    expect(h.markPurge).not.toHaveBeenCalled();
+  });
+
+  it('leaves files alone on an ordinary move', async () => {
+    await moveBooking('b1', 'NEW_BOOKING' as never, 'CONTRACT_SENT' as never, 'ops', 'x');
+    expect(h.updateManyDocuments).not.toHaveBeenCalled();
+    expect(h.markPurge).not.toHaveBeenCalled();
   });
 });

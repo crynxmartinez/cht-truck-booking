@@ -15,6 +15,7 @@ const baseline: Record<SettingKey, number | boolean> = {
   dailySweepHour: 9,
   unsignedReleaseHours: 72,
   completedHideDays: 14,
+  boardDrag: true,
   storageDeletionEnabled: false,
   blobQuotaGb: 1,
   purgeStartPct: 80,

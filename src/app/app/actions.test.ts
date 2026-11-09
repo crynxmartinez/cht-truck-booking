@@ -11,6 +11,9 @@ const h = vi.hoisted(() => ({
   setStage: vi.fn(),
   reopenBooking: vi.fn(),
   cancelBooking: vi.fn(),
+  moveBooking: vi.fn(),
+  findBooking: vi.fn(),
+  StaleMoveError: class StaleMoveError extends Error {},
   pending: [] as Array<Promise<unknown>>,
   NoTruckAvailableError: class NoTruckAvailableError extends Error {},
   SwapNotAllowedError: class SwapNotAllowedError extends Error {},
@@ -28,17 +31,19 @@ vi.mock('@/lib/notify', () => ({
   setStage: h.setStage,
 }));
 vi.mock('@/lib/calendar-sync', () => ({ syncBookingToCalendar: h.syncBookingToCalendar }));
-vi.mock('@/lib/db', () => ({ prisma: {} }));
+vi.mock('@/lib/db', () => ({ prisma: { booking: { findUnique: h.findBooking } } }));
 vi.mock('@/lib/bookings', () => ({
   cancelBooking: h.cancelBooking,
   completeBooking: vi.fn(),
   reopenBooking: h.reopenBooking,
+  moveBooking: h.moveBooking,
+  StaleMoveError: h.StaleMoveError,
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 // Run the post-response work for real, and keep hold of it so a test can wait.
 vi.mock('next/server', () => ({ after: (fn: () => Promise<unknown>) => h.pending.push(fn()) }));
 
-import { cancel, moveStage, reopen, switchTruck } from './actions';
+import { cancel, moveCard, reopen, switchTruck } from './actions';
 
 const moved = { id: 'b1', truck: { code: 'B' }, previousTruckCode: 'A' };
 
@@ -116,16 +121,18 @@ describe('switchTruck', () => {
   });
 });
 
-describe('moving a card or reopening a booking — the two paths that used to skip the overlap check', () => {
-  const violation = { code: '23P01', message: 'violates exclusion constraint "bookings_no_overlap"' };
+const violation = { code: '23P01', message: 'violates exclusion constraint "bookings_no_overlap"' };
 
-  it('moveStage says the truck is taken instead of crashing', async () => {
-    h.setStage.mockRejectedValue(violation);
-    const res = await moveStage('b1', 'CONTRACT_SENT');
-    expect(res.ok).toBe(false);
-    expect(!res.ok && res.error).toContain('already booked');
-  });
+/** A booking in the given stage, with its agreements signed and approved unless said otherwise. */
+const booking = (stage: string, over: Record<string, unknown> = {}) => ({
+  stage,
+  pickupDate: new Date('2026-12-20T00:00:00Z'),
+  returnDate: new Date('2026-12-22T00:00:00Z'),
+  contracts: [{ status: 'SIGNED', counterSignedAt: new Date('2026-11-01T00:00:00Z') }],
+  ...over,
+});
 
+describe('reopening a booking — the path that used to skip the overlap check', () => {
   it('reopen says the truck is taken instead of crashing', async () => {
     h.reopenBooking.mockRejectedValue(new h.NoTruckAvailableError('That truck has since been booked on those dates.'));
     expect(await reopen('b1')).toEqual({ ok: false, error: 'That truck has since been booked on those dates.' });
@@ -136,33 +143,122 @@ describe('moving a card or reopening a booking — the two paths that used to sk
     const res = await reopen('b1');
     expect(res.ok).toBe(false);
   });
-
-  it('moveStage still succeeds normally', async () => {
-    h.setStage.mockResolvedValue('CONFIRMED');
-    expect((await moveStage('b1', 'CONFIRMED')).ok).toBe(true);
-  });
-
-  it('moveStage lets an unrelated failure surface rather than hiding it', async () => {
-    h.setStage.mockRejectedValue(new Error('connection reset'));
-    await expect(moveStage('b1', 'CONFIRMED')).rejects.toThrow('connection reset');
-  });
 });
 
-describe('moveStage — the office calendar follows a hand move', () => {
-  // Found on the live data: a finished rental dragged back to "Needs Approval"
-  // kept its solid, confirmed title on Google, because nothing re-synced it.
-  it('re-syncs the calendar after a stage is moved by hand, so the title and status match', async () => {
-    h.setStage.mockResolvedValue(undefined);
-    const res = await moveStage('b1', 'AWAITING_APPROVAL');
-    expect(res.ok).toBe(true);
+describe('moveCard — one door for dragging and the Move to stage buttons', () => {
+  beforeEach(() => {
+    h.findBooking.mockResolvedValue(booking('NEW_BOOKING'));
+    h.moveBooking.mockResolvedValue(undefined);
+    h.syncBookingToCalendar.mockResolvedValue(undefined);
+  });
+
+  it('makes an ordinary move, records who and how, and re-syncs the calendar', async () => {
+    const res = await moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'drag');
+    expect(res).toEqual({ ok: true, message: 'Moved to Contract Sent.' });
+    expect(h.moveBooking).toHaveBeenCalledWith('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'ops', expect.stringContaining('Moved by drag'));
     expect(h.syncBookingToCalendar).toHaveBeenCalledWith('b1');
   });
 
-  it('does not touch the calendar when the move was refused', async () => {
-    h.setStage.mockRejectedValue({ code: '23P01', message: 'conflicting key value violates exclusion constraint "bookings_no_overlap"' });
-    const res = await moveStage('b1', 'CONTRACT_SENT');
+  it('refuses, changing nothing, when the card is not where the screen showed it', async () => {
+    h.findBooking.mockResolvedValue(booking('CONFIRMED'));
+    const res = await moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'drag');
+    expect(res).toMatchObject({ ok: false, stale: true });
+    expect(h.moveBooking).not.toHaveBeenCalled();
+  });
+
+  it('turns a race lost inside the move into the same stale answer', async () => {
+    h.moveBooking.mockRejectedValue(new h.StaleMoveError('Someone already moved this booking.'));
+    expect(await moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'drag')).toMatchObject({ ok: false, stale: true });
+  });
+
+  it('asks first, and moves nothing, for a move that needs a yes', async () => {
+    h.findBooking.mockResolvedValue(booking('RETURNED'));
+    const res = await moveCard('b1', 'RETURNED', 'COMPLETED', 'none', 'drag');
+    expect(res).toMatchObject({ ok: false, needs: 'confirm' });
+    expect(h.moveBooking).not.toHaveBeenCalled();
+  });
+
+  it('moves after the yes, and writes what was confirmed on the booking', async () => {
+    h.findBooking.mockResolvedValue(booking('RETURNED'));
+    const res = await moveCard('b1', 'RETURNED', 'COMPLETED', 'confirmed', 'drag');
+    expect(res.ok).toBe(true);
+    expect(h.moveBooking).toHaveBeenCalledWith('b1', 'RETURNED', 'COMPLETED', 'ops', expect.stringContaining('office confirmed'));
+  });
+
+  it('refuses Confirmed for an agreement that is not approved, and a plain yes does not get round it', async () => {
+    h.findBooking.mockResolvedValue(booking('AWAITING_APPROVAL', { contracts: [{ status: 'SIGNED', counterSignedAt: null }] }));
+    expect(await moveCard('b1', 'AWAITING_APPROVAL', 'CONFIRMED', 'none', 'drag')).toMatchObject({ ok: false, needs: 'override' });
+    expect(await moveCard('b1', 'AWAITING_APPROVAL', 'CONFIRMED', 'confirmed', 'drag')).toMatchObject({ ok: false, needs: 'override' });
+    expect(h.moveBooking).not.toHaveBeenCalled();
+  });
+
+  it('allows the override, and records it as one', async () => {
+    h.findBooking.mockResolvedValue(booking('AWAITING_APPROVAL', { contracts: [] }));
+    const res = await moveCard('b1', 'AWAITING_APPROVAL', 'CONFIRMED', 'override', 'button');
+    expect(res.ok).toBe(true);
+    expect(h.moveBooking).toHaveBeenCalledWith('b1', 'AWAITING_APPROVAL', 'CONFIRMED', 'ops', expect.stringContaining('office override'));
+  });
+
+  it('does not count a void agreement against approval, but needs at least one real one', async () => {
+    h.findBooking.mockResolvedValue(
+      booking('AWAITING_APPROVAL', {
+        contracts: [
+          { status: 'VOID', counterSignedAt: null },
+          { status: 'SIGNED', counterSignedAt: new Date() },
+        ],
+      }),
+    );
+    expect((await moveCard('b1', 'AWAITING_APPROVAL', 'CONFIRMED', 'none', 'drag')).ok).toBe(true);
+  });
+
+  it('refuses a drag when dragging is switched off, but still allows the button', async () => {
+    const { config } = await import('@/lib/config');
+    const spy = vi.spyOn(config, 'boardDrag', 'get').mockReturnValue(false);
+    try {
+      const dragged = await moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'drag');
+      expect(dragged).toMatchObject({ ok: false, error: expect.stringContaining('switched off') });
+      expect(h.moveBooking).not.toHaveBeenCalled();
+      expect((await moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'button')).ok).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each([
+    ['not a stage', 'NEW_BOOKING', 'NONSENSE', 'none', 'drag'],
+    ['Cancelled is not a column', 'NEW_BOOKING', 'CANCELLED', 'none', 'drag'],
+    ['moving from Cancelled', 'CANCELLED', 'CONFIRMED', 'none', 'drag'],
+    ['a made-up agreement level', 'NEW_BOOKING', 'CONTRACT_SENT', 'yes', 'drag'],
+    ['a made-up way of moving', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'hack'],
+  ])('refuses %s without touching anything', async (_n, from, to, ack, via) => {
+    const res = await moveCard('b1', from, to, ack, via);
     expect(res.ok).toBe(false);
-    expect(h.syncBookingToCalendar).not.toHaveBeenCalled();
+    expect(h.moveBooking).not.toHaveBeenCalled();
+  });
+
+  it('says the truck is taken instead of crashing', async () => {
+    h.moveBooking.mockRejectedValue(violation);
+    const res = await moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'drag');
+    expect(res.ok).toBe(false);
+    expect(!res.ok && 'error' in res && res.error).toContain('already booked');
+  });
+
+  it('lets an unrelated failure surface rather than hiding it', async () => {
+    h.moveBooking.mockRejectedValue(new Error('connection reset'));
+    await expect(moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'drag')).rejects.toThrow('connection reset');
+  });
+
+  it('keeps the move and logs it when only the calendar update fails', async () => {
+    h.syncBookingToCalendar.mockRejectedValue(new Error('google down'));
+    const res = await moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'drag');
+    expect(res.ok).toBe(true);
+    expect(h.logEvent).toHaveBeenCalledWith('b1', 'calendar_sync_failed', expect.any(String), 'system');
+  });
+
+  it('refuses a booking that does not exist', async () => {
+    h.findBooking.mockResolvedValue(null);
+    expect(await moveCard('b1', 'NEW_BOOKING', 'CONTRACT_SENT', 'none', 'drag')).toMatchObject({ ok: false });
+    expect(h.moveBooking).not.toHaveBeenCalled();
   });
 });
 

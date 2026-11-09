@@ -24,6 +24,7 @@ export type SettingKey =
   | 'dailySweepHour'
   | 'unsignedReleaseHours'
   | 'completedHideDays'
+  | 'boardDrag'
   | 'storageDeletionEnabled'
   | 'blobQuotaGb'
   | 'purgeStartPct'
@@ -168,6 +169,13 @@ export const SETTINGS: readonly SettingDef[] = [
     unit: 'days',
     min: 1,
     max: 365,
+  },
+  {
+    key: 'boardDrag',
+    group: 'Board',
+    label: 'Allow dragging cards between columns',
+    help: 'On lets you drag a card to another column. Off hides dragging, and you move a card with the Move to stage buttons inside it. Either way, risky moves ask first.',
+    kind: 'bool',
   },
   {
     key: 'storageDeletionEnabled',

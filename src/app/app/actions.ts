@@ -6,7 +6,7 @@ import { MessageChannel, Stage } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
 import { reassignTruck, NoTruckAvailableError, SwapNotAllowedError } from '@/lib/availability';
-import { cancelBooking, completeBooking, reopenBooking } from '@/lib/bookings';
+import { cancelBooking, moveBooking, reopenBooking, StaleMoveError } from '@/lib/bookings';
 import { logEvent, notify, notifyStaff, setStage } from '@/lib/notify';
 import type { TemplateKey } from '@/lib/messages';
 import { addDays, dateToIso, isoToDate, isIsoDate, latestBookable, todayInOps } from '@/lib/dates';
@@ -19,6 +19,8 @@ import { loadSettings } from '@/lib/settings';
 import { canAddMainAdmin, canStopBeingMainAdmin, type Approver } from '@/lib/approvers';
 import { prepareOfficeMessage, type OfficeMessageInput, type Preview } from '@/lib/office-message';
 import { checkConsent, consentLogLine } from '@/lib/sms-consent';
+import { ackCovers, checkMove, isAck, isBoardStage, type Ack } from '@/lib/stage-moves';
+import { STAGE_LABEL } from '@/lib/stages';
 import { otherChannelsChanged } from '@/lib/sms-block';
 import { allowSms, getSmsBlock } from '@/lib/ghl';
 
@@ -53,24 +55,98 @@ function truckTaken(err: unknown): ActionResult | null {
   return null;
 }
 
-export async function moveStage(bookingId: string, stage: Stage): Promise<ActionResult> {
+export type MoveResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string; stale?: boolean }
+  /** Nothing was changed: the person has to agree to more first, then ask again. */
+  | { ok: false; needs: 'confirm' | 'override'; reasons: readonly string[] };
+
+/** True when every agreement on the booking is signed by the renter and approved. Same test approvals.ts uses to confirm. */
+function allApproved(contracts: Array<{ status: string; counterSignedAt: Date | null }>): boolean {
+  const live = contracts.filter((k) => k.status !== 'VOID');
+  return live.length > 0 && live.every((k) => !['SENT', 'VIEWED'].includes(k.status) && k.counterSignedAt !== null);
+}
+
+const MOVE_VIA = { drag: 'Moved by drag', button: 'Moved by hand', undo: 'Move undone' } as const;
+
+/**
+ * Move a card to another column, from the Board (drag) or the booking (button).
+ *
+ * `expectedFrom` is the column the screen showed; if someone else moved the card
+ * first, nothing happens. The rules in stage-moves.ts decide whether the move just
+ * happens, needs a yes, or needs an override, and they are checked here, so the
+ * screen cannot skip them. Whatever the person agreed to is written on the booking.
+ */
+export async function moveCard(
+  bookingId: string,
+  expectedFrom: string,
+  to: string,
+  ack: string = 'none',
+  via: string = 'button',
+): Promise<MoveResult> {
   const who = await actor();
+
+  if (typeof bookingId !== 'string' || !bookingId) return { ok: false, error: 'That booking was not understood.' };
+  if (!isBoardStage(expectedFrom) || !isBoardStage(to)) return { ok: false, error: 'That move is not possible from here.' };
+  if (!isAck(ack) || !(via in MOVE_VIA)) return { ok: false, error: 'That move was not understood.' };
+  if (via === 'drag' && !config.boardDrag) return { ok: false, error: 'Dragging is switched off in Settings.' };
+
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: {
+      stage: true,
+      pickupDate: true,
+      returnDate: true,
+      contracts: { select: { status: true, counterSignedAt: true } },
+    },
+  });
+  if (!booking) return { ok: false, error: 'That booking was not found.' };
+  if (booking.stage !== expectedFrom) {
+    return { ok: false, error: 'Someone already moved this booking. The board has been refreshed.', stale: true };
+  }
+
+  const verdict = checkMove({
+    from: booking.stage,
+    to,
+    pickupIso: dateToIso(booking.pickupDate),
+    returnIso: dateToIso(booking.returnDate),
+    todayIso: todayInOps(),
+    approvalComplete: allApproved(booking.contracts),
+  });
+
+  if (!ackCovers(verdict, ack as Ack)) {
+    return { ok: false, needs: verdict.level === 'blocked' ? 'override' : 'confirm', reasons: verdict.level === 'ok' ? [] : verdict.reasons };
+  }
+
+  // What the office agreed to goes on the booking, so a later reader can see why.
+  const agreed =
+    verdict.level === 'ok'
+      ? ''
+      : verdict.level === 'blocked'
+        ? ` (office override: ${verdict.reasons.join(' ')})`
+        : ` (office confirmed: ${verdict.reasons.join(' ')})`;
+
   try {
-    if (stage === Stage.COMPLETED) {
-      await completeBooking(bookingId, who);
-    } else {
-      await setStage(bookingId, stage, who, 'Moved by hand');
-      // The calendar title and status depend on the stage (a rental waiting on
-      // approval is shown unconfirmed), so a hand move has to re-sync it.
-      // Completing already does this itself.
-      await syncBookingToCalendar(bookingId);
-    }
+    await moveBooking(bookingId, booking.stage, to, who, `${MOVE_VIA[via as keyof typeof MOVE_VIA]}: ${STAGE_LABEL[booking.stage]} to ${STAGE_LABEL[to]}${agreed}`);
   } catch (err) {
+    if (err instanceof StaleMoveError) return { ok: false, error: err.message, stale: true };
     const refusal = truckTaken(err);
-    if (refusal) return refusal;
+    if (refusal && !refusal.ok) return { ok: false, error: refusal.error };
     throw err;
   }
-  return done('Stage updated.');
+
+  // The calendar title and colour depend on the stage (a rental waiting on
+  // approval is shown unconfirmed). The move has already happened, so a calendar
+  // hiccup is reported, not allowed to undo it.
+  try {
+    await syncBookingToCalendar(bookingId);
+  } catch (err) {
+    console.error('calendar sync after move failed', err);
+    await logEvent(bookingId, 'calendar_sync_failed', 'The stage changed but the calendar could not be updated.', 'system');
+  }
+
+  done();
+  return { ok: true, message: `Moved to ${STAGE_LABEL[to]}.` };
 }
 
 export async function switchTruck(bookingId: string, truckId: string): Promise<ActionResult> {

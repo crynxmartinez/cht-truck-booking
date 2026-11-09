@@ -33,6 +33,7 @@ export default async function BoardPage() {
       cards={bookings.map(toCard)}
       trucks={trucks}
       defaultDays={customerDefaultDays(config.customerMaxDays, config.rentalBlockDays)}
+      dragEnabled={config.boardDrag}
       loadDetail={loadDetail}
     />
   );

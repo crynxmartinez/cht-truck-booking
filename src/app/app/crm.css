@@ -1238,3 +1238,38 @@
     white-space: nowrap;
   }
 }
+
+/* Dragging a card between columns */
+.bcard.grab { cursor: grab; }
+.bcard.lifted { opacity: 0.35; }
+.bcard.overlay {
+  cursor: grabbing;
+  box-shadow: 0 12px 28px rgba(16, 18, 22, 0.28);
+  transform: rotate(1.5deg);
+}
+.board.dragging .col { outline: 2px dashed transparent; transition: outline-color 0.12s, background 0.12s; }
+.board.dragging .col.over { outline-color: var(--red); background: #e2e3e6; }
+
+.move-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px 10px 16px;
+  border-radius: 12px;
+  background: #1b1d21;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  font-size: 13.5px;
+}
+.move-toast.err { background: #8c1325; }
+.move-toast .btn { color: #fff; border-color: rgba(255, 255, 255, 0.35); }
+@media (prefers-reduced-motion: reduce) {
+  .bcard.overlay { transform: none; }
+  .board.dragging .col { transition: none; }
+}

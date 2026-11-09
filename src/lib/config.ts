@@ -44,6 +44,7 @@ export const BASELINE = {
   dailySweepHour: num('DAILY_SWEEP_HOUR', 9),
   unsignedReleaseHours: num('UNSIGNED_RELEASE_HOURS', 72),
   completedHideDays: 14 as number,
+  boardDrag: true as boolean,
   // Off unless somebody turns it on: nothing is deleted automatically.
   storageDeletionEnabled: false as boolean,
   blobQuotaGb: Math.max(1, Math.round(envQuotaBytes / GIB)),
@@ -101,6 +102,9 @@ export const config = {
   /** Finished rentals leave the Board after this many days. They are never deleted. */
   get completedHideDays() {
     return override('completedHideDays', BASELINE.completedHideDays);
+  },
+  get boardDrag() {
+    return override('boardDrag', BASELINE.boardDrag);
   },
 
   /** A truck held by an unsigned contract is released after this long. */

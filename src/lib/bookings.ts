@@ -28,6 +28,51 @@ export async function createPaperwork(bookingId: string) {
   ]);
 }
 
+/** Someone else moved the card first, so what the screen showed is out of date. */
+export class StaleMoveError extends Error {
+  constructor(message = 'Someone already moved this booking. The board has been refreshed.') {
+    super(message);
+    this.name = 'StaleMoveError';
+  }
+}
+
+/**
+ * Move a booking from one stage to another, only if it is still in the stage the
+ * screen showed. The check is in the write itself, so two people moving the same
+ * card at once cannot both win. Moving INTO Completed closes it out exactly as
+ * completing does; moving OUT of Completed undoes that, so the renter's files are
+ * not left scheduled for removal under a booking that is active again.
+ * The caller has already decided the move is allowed (see stage-moves.ts).
+ */
+export async function moveBooking(
+  bookingId: string,
+  from: Stage,
+  to: Stage,
+  actor: string,
+  detail: string,
+): Promise<void> {
+  if (from === to) return;
+
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.booking.updateMany({ where: { id: bookingId, stage: from }, data: { stage: to } });
+    if (claimed.count === 0) throw new StaleMoveError();
+
+    if (to === Stage.COMPLETED) {
+      await tx.booking.update({
+        where: { id: bookingId },
+        data: { completedAt: new Date(), overdue: false, needsReview: false },
+      });
+    } else if (from === Stage.COMPLETED) {
+      await tx.booking.update({ where: { id: bookingId }, data: { completedAt: null } });
+      await tx.document.updateMany({ where: { bookingId }, data: { purgeEligibleAt: null } });
+    }
+  });
+
+  if (to === Stage.COMPLETED) await markPurgeEligible(bookingId);
+
+  await logEvent(bookingId, 'stage_change', detail, actor, { from, to });
+}
+
 /** Close a booking out: releases the truck and starts the retention clock. */
 export async function completeBooking(bookingId: string, actor = 'system') {
   await setStage(bookingId, Stage.COMPLETED, actor, 'Booking closed');

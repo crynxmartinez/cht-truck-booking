@@ -284,7 +284,8 @@
     maxDays: {},                                // iso -> most days that can be booked from that date
     cap: CFG.rentalDays,                        // the most days a customer may choose
     days: null,                                 // the length they chose
-    daysPicked: false,                          // did they choose, or did we suggest?
+    want: null,                                 // the length they last chose (a date may only fit fewer)
+    startDays: CFG.rentalDays,                  // what to start on until they choose
     loadedMonths: {},
     view: null,                                 // {y, m} currently shown month
     draftId: null,
@@ -398,6 +399,7 @@
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (j) {
         if (j.maxDays) S.cap = j.maxDays;
+        if (j.defaultDays) S.startDays = Math.min(j.defaultDays, S.cap);
         Object.keys(j.days || {}).forEach(function (iso) {
           S.avail[iso] = j.days[iso].trucksFree;
           // A server that only knows trucksFree means the full house length.
@@ -449,15 +451,18 @@
 
   /** After availability reloads: keep what still fits, drop what no longer does. */
   function reconcilePick() {
-    if (!S.date) return;
+    // Only while they are still choosing; later steps keep what they chose and the
+    // server has the final say when they submit.
+    if (!S.date || S.step !== 0) return;
     var fit = S.maxDays[S.date] || 0;
     if (fit < 1) {
       S.date = null; S.days = null;
       el('pick').classList.remove('live');
+      alertOn('calAlert', 'That date was just taken. Please choose another.');
       renderCal(); syncGo();
       return;
     }
-    if (S.days > fit) S.days = fit;
+    S.days = Math.min(S.want || S.startDays, S.cap, fit);
     renderPick(); syncGo();
   }
 
@@ -467,7 +472,7 @@
     S.date = b.getAttribute('data-date');
     var fit = S.maxDays[S.date] || 0;
     // Keep their earlier choice if it still fits; otherwise offer the longest that does.
-    S.days = S.daysPicked && S.days <= fit ? S.days : Math.min(S.cap, fit);
+    S.days = Math.min(S.want || S.startDays, S.cap, fit);
     renderCal();
     renderPick();
     syncGo();
@@ -477,7 +482,7 @@
     var b = e.target.closest('[data-days]');
     if (!b || b.disabled) return;
     S.days = +b.getAttribute('data-days');
-    S.daysPicked = true;
+    S.want = S.days;
     renderPick();
     syncGo();
   });

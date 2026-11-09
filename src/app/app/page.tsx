@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
+import { customerDefaultDays } from '@/lib/booking-rules';
 import { boardWhere, completedCutoff } from '@/lib/board-window';
 import { loadSettings } from '@/lib/settings';
 import { Board } from './Board';
@@ -31,7 +32,7 @@ export default async function BoardPage() {
     <Board
       cards={bookings.map(toCard)}
       trucks={trucks}
-      defaultDays={config.rentalBlockDays}
+      defaultDays={customerDefaultDays(config.customerMaxDays, config.rentalBlockDays)}
       loadDetail={loadDetail}
     />
   );

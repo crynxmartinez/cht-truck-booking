@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { config } from '@/lib/config';
+import { customerDefaultDays } from '@/lib/booking-rules';
 import { dateToIso, todayInOps } from '@/lib/dates';
 import { layout, monthWeeks, type CalItem } from '@/lib/calendar-layout';
 import { googleCalendarLink } from '@/lib/calendar-link';
@@ -150,7 +151,7 @@ export default async function CalendarPage({
             a: allTrucks.some((t) => t.code === 'A' && !t.active),
             b: allTrucks.some((t) => t.code === 'B' && !t.active),
           }}
-          defaultDays={config.rentalBlockDays}
+          defaultDays={customerDefaultDays(config.customerMaxDays, config.rentalBlockDays)}
           loadDetail={loadDetail}
         />
       </div>

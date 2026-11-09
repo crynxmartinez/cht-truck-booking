@@ -38,15 +38,18 @@ export async function GET(req: Request) {
     return json({ error: 'Invalid date range.' }, { status: 400, origin });
   }
 
-  // Cap the span so nobody asks for five years in one call.
+  // Cap the span both ways so nobody asks for centuries in one call: nothing
+  // before yesterday is ever bookable, and nothing past the calendar's end.
   const hardEnd = latestBookable();
   const cappedTo = to > hardEnd ? hardEnd : to;
-  if (from > cappedTo) {
+  const floor = addDays(today, -1);
+  const cappedFrom = from < floor ? floor : from;
+  if (cappedFrom > cappedTo) {
     return json({ days: {} }, { origin });
   }
 
   try {
-    const days = await getAvailability(from, cappedTo);
+    const days = await getAvailability(cappedFrom, cappedTo);
     const map: Record<string, { trucksFree: number; maxDays: number }> = {};
     for (const d of days) map[d.date] = { trucksFree: d.trucksFree, maxDays: d.maxDays };
 

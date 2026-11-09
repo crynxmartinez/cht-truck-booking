@@ -200,6 +200,7 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
         at: m.sentAt ?? m.createdAt,
       })),
       b.phone,
+      b.events.find((e) => e.type === 'texts_restored')?.createdAt ?? null,
     ),
     events: b.events.map((e) => ({
       type: e.type,

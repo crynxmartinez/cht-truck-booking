@@ -18,13 +18,16 @@ export type SmsHistory = { channel: string; to: string | null; status: string; e
 /**
  * Is the most recent text to THIS number blocked because they opted out or have
  * Do Not Disturb on? Judged per number, and a later text that went through
- * clears it: the block is gone, whoever removed it.
+ * clears it: the block is gone, whoever removed it. So does a recorded
+ * turn-back-on that came after the failure.
  */
-export function blockedKind(history: SmsHistory[], phone: string): BlockKind | null {
+export function blockedKind(history: SmsHistory[], phone: string, restoredAt?: Date | null): BlockKind | null {
   const latest = history
     .filter((m) => m.channel === 'SMS' && m.to === phone)
     .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
   if (!latest || latest.status !== 'FAILED') return null;
+  // Texts were turned back on after that failure, so it no longer describes them.
+  if (restoredAt && restoredAt.getTime() > latest.at.getTime()) return null;
   const why = explainFailure(latest.error, 'SMS');
   return why.kind === 'dnd' || why.kind === 'unsubscribed' ? why.kind : null;
 }
@@ -39,8 +42,8 @@ export const CONSENT_WAYS = [
 
 export type ConsentWay = (typeof CONSENT_WAYS)[number]['key'];
 
-const MIN_NOTE = 8;
-const MAX_NOTE = 300;
+export const MIN_NOTE = 8;
+export const MAX_NOTE = 300;
 
 export type ConsentCheck =
   | { ok: true; way: ConsentWay; wayLabel: string; note: string }

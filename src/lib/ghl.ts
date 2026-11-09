@@ -1,4 +1,5 @@
 import { config } from './config';
+import { allowSmsBody, parseSmsBlock, type DndSettings, type SmsBlock } from './sms-block';
 
 /**
  * GoHighLevel v2 client — just the four calls this system makes.
@@ -111,26 +112,25 @@ export async function findContactByEmail(email: string): Promise<GhlResult<{ con
 }
 
 /**
- * Where a contact's text blocking stands in GoHighLevel: 'active' and 'permanent'
- * both mean texts are blocked; 'inactive' (or nothing set) means they are not.
+ * Where a contact's text blocking stands in GoHighLevel. Texts count as blocked
+ * unless GoHighLevel clearly says otherwise (see sms-block.ts).
  */
-export async function getSmsBlock(contactId: string): Promise<GhlResult<{ blocked: boolean; status: string }>> {
-  const res = await ghlFetch<any>(`/contacts/${encodeURIComponent(contactId)}`, { method: 'GET' });
+export async function getSmsBlock(contactId: string): Promise<GhlResult<SmsBlock>> {
+  const res = await ghlFetch<unknown>(`/contacts/${encodeURIComponent(contactId)}`, { method: 'GET' });
   if (!res.ok) return res;
-  const contact = res.data?.contact ?? res.data ?? {};
-  const status = String(contact.dndSettings?.SMS?.status ?? (contact.dnd ? 'active' : 'inactive')).toLowerCase();
-  return { ok: true, data: { blocked: status === 'active' || status === 'permanent', status } };
+  return { ok: true, data: parseSmsBlock(res.data) };
 }
 
 /**
- * Switches off Do Not Disturb for TEXTS ONLY on one contact. Calls and email
- * settings are left exactly as they are. Only for a renter who has asked for
- * texts again; the caller records that.
+ * Switches off Do Not Disturb for TEXTS on one contact. GoHighLevel may replace
+ * the whole setting rather than merge it, so every other channel is sent back
+ * exactly as it was read, and the caller checks them again afterwards. Only for
+ * a renter who has asked for texts again; the caller records that first.
  */
-export async function allowSms(contactId: string, reason: string): Promise<GhlResult<Record<string, never>>> {
-  const res = await ghlFetch<any>(`/contacts/${encodeURIComponent(contactId)}`, {
+export async function allowSms(contactId: string, current: DndSettings, reason: string): Promise<GhlResult<Record<string, never>>> {
+  const res = await ghlFetch<unknown>(`/contacts/${encodeURIComponent(contactId)}`, {
     method: 'PUT',
-    body: { dndSettings: { SMS: { status: 'inactive', message: reason.slice(0, 200), code: '' } } },
+    body: allowSmsBody(current, reason),
   });
   if (!res.ok) return res;
   return { ok: true, data: {} };

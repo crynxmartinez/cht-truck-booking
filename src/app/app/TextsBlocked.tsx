@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { turnTextsBackOn, type ActionResult } from './actions';
-import { CONSENT_WAYS } from '@/lib/sms-consent';
+import { CONSENT_WAYS, MAX_NOTE, MIN_NOTE } from '@/lib/sms-consent';
 
 /**
  * Shown only when texts to this renter are blocked. We never switch the block
@@ -24,6 +24,7 @@ export function TextsBlocked({
   const [way, setWay] = useState('');
   const [note, setNote] = useState('');
   const [sure, setSure] = useState(false);
+  const [restored, setRestored] = useState(false);
   const [pending, start] = useTransition();
 
   function submit() {
@@ -32,6 +33,7 @@ export function TextsBlocked({
         const result = await turnTextsBackOn(bookingId, way, note);
         onResult(result);
         if (result.ok) {
+          setRestored(true);
           setOpen(false);
           setWay('');
           setNote('');
@@ -46,8 +48,16 @@ export function TextsBlocked({
     });
   }
 
+  if (restored) {
+    return (
+      <div className="note info" role="status" style={{ marginTop: 12 }}>
+        Texts are back on for {name}. Press Resend for anything they missed, or write them a message below.
+      </div>
+    );
+  }
+
   return (
-    <div className="note warn" style={{ marginTop: 12 }}>
+    <div className="note warn" role="status" style={{ marginTop: 12 }}>
       <b>Texts to {name} are blocked.</b>{' '}
       {kind === 'unsubscribed'
         ? 'They replied STOP, so they have opted out of our texts.'
@@ -84,7 +94,7 @@ export function TextsBlocked({
           <input
             id="tb-note"
             type="text"
-            maxLength={300}
+            maxLength={MAX_NOTE}
             value={note}
             placeholder="Told Diana on the phone, Nov 9 about 2pm"
             onChange={(e) => {
@@ -104,13 +114,13 @@ export function TextsBlocked({
               <button
                 type="button"
                 className="btn small"
-                disabled={pending || !way || note.trim().length < 8}
+                disabled={pending || !way || note.trim().length < MIN_NOTE}
                 onClick={() => setSure(true)}
               >
                 Turn texts back on
               </button>
             ) : (
-              <button type="button" className="btn primary small" disabled={pending} onClick={submit}>
+              <button type="button" className="btn primary small" disabled={pending} onClick={submit} autoFocus>
                 {pending ? 'Working…' : `Yes, ${name} asked for this`}
               </button>
             )}

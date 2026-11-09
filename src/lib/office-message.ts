@@ -39,14 +39,19 @@ export type Prepared = { ok: true; preview: Preview } | { ok: false; errors: str
  * or have Do Not Disturb on? Judged per number: a text that worked for the
  * second driver says nothing about the renter, and the reverse.
  */
-function textBlocked(history: MessageHistory[], phone: string): string | null {
-  const kind = blockedKind(history, phone);
+function textBlocked(history: MessageHistory[], phone: string, restoredAt?: Date | null): string | null {
+  const kind = blockedKind(history, phone, restoredAt);
   if (kind === 'dnd') return 'has Do Not Disturb switched on, so texts to them are blocked';
   if (kind === 'unsubscribed') return 'has opted out of our texts';
   return null;
 }
 
-export function prepareOfficeMessage(booking: BookingFacts, input: OfficeMessageInput, history: MessageHistory[]): Prepared {
+export function prepareOfficeMessage(
+  booking: BookingFacts,
+  input: OfficeMessageInput,
+  history: MessageHistory[],
+  restoredAt?: Date | null,
+): Prepared {
   const errors: string[] = [];
   const text = input.text.trim();
   const subject = input.subject.trim();
@@ -72,7 +77,7 @@ export function prepareOfficeMessage(booking: BookingFacts, input: OfficeMessage
   const recipients: Recipient[] = [];
 
   if (input.sms) {
-    const blocked = textBlocked(history, booking.phone);
+    const blocked = textBlocked(history, booking.phone, restoredAt);
     if (!booking.phone.trim()) {
       warnings.push(`${name} has no phone number on the booking, so no text will be sent.`);
     } else if (blocked) {

@@ -35,6 +35,13 @@ describe('blockedKind', () => {
     expect(blockedKind(h, PHONE)).toBeNull();
   });
 
+  it('is cleared by a turn-back-on recorded after the failure, but not one before it', () => {
+    const h = [sms({ status: 'FAILED', error: 'DND is active', at: at('2026-11-05T10:00:00Z') })];
+    expect(blockedKind(h, PHONE, at('2026-11-06T10:00:00Z'))).toBeNull();
+    expect(blockedKind(h, PHONE, at('2026-11-04T10:00:00Z'))).toBe('dnd');
+    expect(blockedKind(h, PHONE, null)).toBe('dnd');
+  });
+
   it('judges each number on its own', () => {
     const h = [sms({ status: 'FAILED', error: 'DND is active', to: '+15555550999' })];
     expect(blockedKind(h, PHONE)).toBeNull();

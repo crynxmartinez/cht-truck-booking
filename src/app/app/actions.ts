@@ -19,6 +19,7 @@ import { loadSettings } from '@/lib/settings';
 import { canAddMainAdmin, canStopBeingMainAdmin, type Approver } from '@/lib/approvers';
 import { prepareOfficeMessage, type OfficeMessageInput, type Preview } from '@/lib/office-message';
 import { checkConsent, consentLogLine } from '@/lib/sms-consent';
+import { otherChannelsChanged } from '@/lib/sms-block';
 import { allowSms, getSmsBlock } from '@/lib/ghl';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -155,23 +156,62 @@ export async function turnTextsBackOn(bookingId: string, way: string, note: stri
     return { ok: false, error: 'GoHighLevel already shows texts as on for this renter. Use Resend to send the message again.' };
   }
 
-  const set = await allowSms(booking.ghlContactId, 'Renter asked for texts again (recorded in the truck CRM)');
-  if (!set.ok) {
-    await logEvent(bookingId, 'texts_restore_failed', `Tried to turn texts back on: ${set.error}`, who);
-    return { ok: false, error: `GoHighLevel did not accept the change: ${set.error}` };
+  // The reason goes on record BEFORE anything changes in GoHighLevel, and if it
+  // cannot be written nothing is changed. (logEvent swallows its own errors, so
+  // this writes directly.)
+  try {
+    await prisma.bookingEvent.create({
+      data: { bookingId, type: 'texts_restore_requested', detail: consentLogLine(consent), actor: who },
+    });
+  } catch (err) {
+    console.error('could not record the reason for turning texts back on', err);
+    return { ok: false, error: 'Could not write the reason on the booking, so nothing was changed. Try again.' };
   }
 
-  const after = await getSmsBlock(booking.ghlContactId);
-  if (!after.ok || after.data.blocked) {
-    await logEvent(bookingId, 'texts_restore_failed', 'Asked GoHighLevel to turn texts back on, but it still shows them as blocked.', who);
+  const set = await allowSms(booking.ghlContactId, before.data.settings, 'Renter asked for texts again (recorded in the truck CRM)');
+  if (!set.ok) {
+    await logEvent(bookingId, 'texts_restore_failed', `GoHighLevel did not accept the change: ${set.error}`, who);
     return {
       ok: false,
-      error: 'GoHighLevel still shows texts as blocked for this renter, so they were not turned back on. Check the contact in GoHighLevel.',
+      error: `GoHighLevel did not confirm the change (${set.error}). Check the contact in GoHighLevel before relying on it either way.`,
     };
   }
 
-  await logEvent(bookingId, 'texts_restored', consentLogLine(consent), who);
-  return done('Texts are back on for this renter. Press Resend for any message they missed.');
+  const after = await getSmsBlock(booking.ghlContactId);
+  if (!after.ok) {
+    await logEvent(bookingId, 'texts_restore_unconfirmed', `Asked GoHighLevel to turn texts back on, but could not read it back: ${after.error}`, who);
+    return {
+      ok: false,
+      error: 'The change was sent, but we could not read it back to confirm. Check the contact in GoHighLevel before relying on it.',
+    };
+  }
+  if (after.data.blocked) {
+    await logEvent(bookingId, 'texts_restore_failed', `Asked GoHighLevel to turn texts back on, but it still shows texts as blocked (${after.data.status}).`, who);
+    return {
+      ok: false,
+      error:
+        after.data.status === 'global'
+          ? 'This renter is on Do Not Disturb for everything in GoHighLevel, which this button does not change. Check the contact in GoHighLevel.'
+          : 'GoHighLevel still shows texts as blocked for this renter, so they were not turned back on. Check the contact in GoHighLevel.',
+    };
+  }
+
+  const changed = otherChannelsChanged(before.data.settings, after.data.settings);
+  if (changed.length) {
+    await logEvent(
+      bookingId,
+      'texts_restore_side_effect',
+      `Texts are on, but GoHighLevel also changed these settings: ${changed.join(', ')}. Check the contact.`,
+      who,
+    );
+  }
+
+  await logEvent(bookingId, 'texts_restored', `Confirmed in GoHighLevel. ${consentLogLine(consent)}`, who);
+  return done(
+    changed.length
+      ? `Texts are back on, but GoHighLevel also changed: ${changed.join(', ')}. Check this renter's contact in GoHighLevel.`
+      : 'Texts are back on for this renter, confirmed in GoHighLevel. Press Resend for any message they missed.',
+  );
 }
 
 /**
@@ -594,11 +634,18 @@ async function prepareFor(bookingId: string, raw: unknown) {
     select: { channel: true, toAddress: true, status: true, error: true, createdAt: true, sentAt: true },
   });
 
+  const restored = await prisma.bookingEvent.findFirst({
+    where: { bookingId, type: 'texts_restored' },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+
   return prepareOfficeMessage(
     booking,
     input,
     // A message that was resent keeps its creation time, so when it went out is the better clock.
     history.map((m) => ({ channel: m.channel, to: m.toAddress, status: m.status, error: m.error, at: m.sentAt ?? m.createdAt })),
+    restored?.createdAt ?? null,
   );
 }
 

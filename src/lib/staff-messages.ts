@@ -1,5 +1,5 @@
 import { config } from './config';
-import { formatMedium } from './dates';
+import { formatMedium, rentalDaysBetween } from './dates';
 import { hourLabel } from './hours';
 
 /**
@@ -63,6 +63,7 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
   const pickup = formatMedium(c.pickupDate);
   const back = formatMedium(c.returnDate);
   const who = c.renterName;
+  const length = rentalDaysBetween(c.pickupDate, c.returnDate);
   const board = config.staff.boardUrl;
 
   // Every email ends with the same block, so the details are always in the
@@ -74,6 +75,7 @@ export function renderStaff(event: StaffEvent, c: StaffContext): StaffRendered {
     `Truck:    ${c.truckCode ?? '—'}`,
     `Pickup:   ${pickup}`,
     `Due back: ${back}`,
+    `Length:   ${length} ${length === 1 ? 'day' : 'days'}`,
     `Ref:      ${c.reference}`,
     ``,
     // Buttons in the HTML copy, "Label: url" in the plain-text one. A raw

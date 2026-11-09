@@ -18,6 +18,7 @@ export const PLACEHOLDERS = [
   { name: 'returnDateShort', label: 'Return date, short', example: 'Dec 5, 2026' },
   { name: 'pickupDateIso', label: 'Pickup date as 2026-12-03 (used in the confirmation block)', example: '2026-12-03' },
   { name: 'returnDateIso', label: 'Return date as 2026-12-05', example: '2026-12-05' },
+  { name: 'rentalDays', label: 'Number of days of the rental', example: '2' },
   { name: 'pickupAddress', label: 'Where the truck is collected', example: '25220 Hancock Ave, Murrieta' },
   { name: 'pickupHour', label: 'Time the pickup-day text goes out (from Settings)', example: '6 AM' },
   { name: 'lockboxCode', label: 'The lockbox code for their truck', example: '12345' },

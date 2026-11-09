@@ -1,7 +1,7 @@
 import { MessageChannel, MessageStatus, Stage } from '@prisma/client';
 import { prisma } from './db';
 import { config } from './config';
-import { dateToIso, todayInOps } from './dates';
+import { dateToIso, rentalDaysBetween, todayInOps } from './dates';
 import { render, toHtml, toPlain, type MessageContext, type TemplateKey } from './messages';
 import { isUrgent, renderStaff, type StaffContext, type StaffEvent } from './staff-messages';
 import { findContactByEmail, sendEmail, sendSms, upsertContact } from './ghl';
@@ -77,6 +77,7 @@ export async function buildContext(bookingId: string): Promise<{ booking: Bookin
     additionalDriverName: booking.additionalDriver?.name ?? null,
     agreementSigned: rental?.status === 'SIGNED',
     pickupIsToday: dateToIso(booking.pickupDate) === todayInOps(),
+    rentalDays: rentalDaysBetween(dateToIso(booking.pickupDate), dateToIso(booking.returnDate)),
     renterName: `${booking.firstName} ${booking.lastName}`.trim(),
   };
 

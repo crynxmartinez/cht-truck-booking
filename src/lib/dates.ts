@@ -56,6 +56,11 @@ export function diffDays(a: IsoDate, b: IsoDate): number {
   return Math.round((isoToDate(b).getTime() - isoToDate(a).getTime()) / 86_400_000);
 }
 
+/** How many days a rental covers, counting the pickup day: back the same day is 1. */
+export function rentalDaysBetween(pickup: IsoDate, returned: IsoDate): number {
+  return diffDays(pickup, returned) + 1;
+}
+
 export function compareIso(a: IsoDate, b: IsoDate): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }

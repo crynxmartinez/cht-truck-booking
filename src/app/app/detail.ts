@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { dateToIso, formatMedium, formatStamp, todayInOps } from '@/lib/dates';
+import { dateToIso, formatMedium, formatStamp, rentalDaysBetween, todayInOps } from '@/lib/dates';
 import { freeTrucksFor } from '@/lib/availability';
 import { swapWindowOpen } from '@/lib/truck-swap';
 import { checklistUrl, signUrl } from '@/lib/tokens';
@@ -45,6 +45,7 @@ export function toCard(b: BookingRow): CardData {
     returnLabel: formatMedium(dateToIso(b.returnDate)),
     pickupIso: dateToIso(b.pickupDate),
     returnIso: dateToIso(b.returnDate),
+    days: rentalDaysBetween(dateToIso(b.pickupDate), dateToIso(b.returnDate)),
     overdue: b.overdue,
     needsReview: b.needsReview,
     rescheduleAsked: b.rescheduleAsked,

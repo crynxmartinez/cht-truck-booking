@@ -55,6 +55,8 @@ export type MessageContext = {
   agreementSigned?: boolean;
   /** Pickup is today. A "text at 6 AM on the day" promise is already false by then. */
   pickupIsToday?: boolean;
+  /** How many days the rental covers. Absent means the house default. */
+  rentalDays?: number;
 };
 
 const SIGNOFF = 'Diana\nCory Home Team';
@@ -80,6 +82,7 @@ export function renderDefault(key: TemplateKey, c: MessageContext): Rendered {
   const pickup = formatLong(c.pickupDate);
   const back = formatLong(c.returnDate);
   const truck = c.truckCode ? `Truck ${c.truckCode}` : 'your truck';
+  const nDays = c.rentalDays ?? config.rentalBlockDays;
   const addr = config.pickupAddress;
   const sign = c.contractToken ? signUrl(c.contractToken) : '';
   const pickList = c.pickupChecklistToken ? checklistUrl(c.pickupChecklistToken) : '';
@@ -92,7 +95,7 @@ export function renderDefault(key: TemplateKey, c: MessageContext): Rendered {
         email: [
           `Hi ${c.firstName},`,
           ``,
-          `Your 3-day truck rental request is in. Nothing is locked yet — your`,
+          `Your ${nDays}-day truck rental request is in. Nothing is locked yet — your`,
           `rental agreement is on its way in a separate message. Sign it and the`,
           `truck is yours.`,
           ``,
@@ -248,7 +251,7 @@ export function renderDefault(key: TemplateKey, c: MessageContext): Rendered {
           `Need to cancel? Reply RESCHEDULE to let us know.`,
         ].join('\n'),
         sms: [
-          `Hi ${c.firstName}, Your 3 Day Truck Rental Booking is already approved.`,
+          `Hi ${c.firstName}, Your ${nDays} Day Truck Rental Booking is already approved.`,
           ``,
           `Truck pick up date: ${c.pickupDate}`,
           `We will send you an email and SMS on the pick up date for the instruction and guides.`,

@@ -66,6 +66,7 @@ const SAMPLE: MessageContext = {
   renterName: 'Qrenter Qname',
   agreementSigned: true,
   pickupIsToday: false,
+  rentalDays: 3,
 };
 
 /**
@@ -79,11 +80,16 @@ export function defaultWording(key: TemplateKey): Wording {
   const values = wordingValues(SAMPLE);
 
   // Longest first, so a long date is replaced before the short one inside it.
-  const swaps = PLACEHOLDERS.map((p) => ({ from: values[p.name], to: `{${p.name}}` }))
+  // The length is a single digit, so it cannot be swapped back by value (every 3 in the text would
+  // go). It is handled by its wording below instead.
+  const swaps = PLACEHOLDERS.filter((p) => p.name !== 'rentalDays')
+    .map((p) => ({ from: values[p.name], to: `{${p.name}}` }))
     .filter((s) => s.from)
     .sort((a, b) => b.from.length - a.from.length);
 
-  const back = (text: string) => swaps.reduce((t, s) => t.split(s.from).join(s.to), text);
+  // "3-day" and "3 Day", the only two places the length is written. SAMPLE.rentalDays is 3.
+  const lengthBack = (text: string) => text.replace(/\b3(-day| Day)\b/g, '{rentalDays}$1');
+  const back = (text: string) => swaps.reduce((t, s) => t.split(s.from).join(s.to), lengthBack(text));
   return { subject: back(rendered.subject), email: back(rendered.email), sms: back(rendered.sms) };
 }
 

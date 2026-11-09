@@ -78,7 +78,7 @@ export function Board({
                   <div className="col-empty">Nothing here</div>
                 ) : (
                   items.map((c) => (
-                    <BoardCard key={c.id} card={c} busy={loadingId === c.id} onOpen={() => openCard(c.id)} />
+                    <BoardCard key={c.id} card={c} busy={loadingId === c.id} defaultDays={defaultDays} onOpen={() => openCard(c.id)} />
                   ))
                 )}
               </div>
@@ -103,7 +103,17 @@ export function Board({
   );
 }
 
-function BoardCard({ card, busy, onOpen }: { card: CardData; busy: boolean; onOpen: () => void }) {
+function BoardCard({
+  card,
+  busy,
+  defaultDays,
+  onOpen,
+}: {
+  card: CardData;
+  busy: boolean;
+  defaultDays: number;
+  onOpen: () => void;
+}) {
   return (
     <button type="button" className="bcard" onClick={onOpen} style={busy ? { opacity: 0.6 } : undefined}>
       <div className="who">{card.name}</div>
@@ -120,6 +130,8 @@ function BoardCard({ card, busy, onOpen }: { card: CardData; busy: boolean; onOp
         {card.rescheduleAsked ? <span className="tag amber">Reschedule</span> : null}
         {card.needsReview ? <span className="tag blue">Review</span> : null}
         {card.additionalDriver ? <span className="tag">+1 driver</span> : null}
+        {/* Only when it is not the usual length, so the common case stays quiet. */}
+        {card.days !== defaultDays ? <span className="tag blue">{card.days === 1 ? '1 day' : `${card.days} days`}</span> : null}
         <span className="tag">{card.reference}</span>
       </div>
     </button>

@@ -15,6 +15,8 @@ export type CardData = {
   returnLabel: string;
   pickupIso: string;
   returnIso: string;
+  /** How many days the rental covers, counting the pickup day. */
+  days: number;
   overdue: boolean;
   needsReview: boolean;
   rescheduleAsked: boolean;

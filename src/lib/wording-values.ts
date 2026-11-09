@@ -23,6 +23,7 @@ export function wordingValues(c: MessageContext): Record<PlaceholderName, string
     returnDateShort: formatMedium(c.returnDate),
     pickupDateIso: c.pickupDate,
     returnDateIso: c.returnDate,
+    rentalDays: String(c.rentalDays ?? config.rentalBlockDays),
     pickupAddress: config.pickupAddress,
     pickupHour: hourLabel(config.pickupSmsHour),
     lockboxCode: c.lockboxCode ?? '',

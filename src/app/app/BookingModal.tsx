@@ -11,6 +11,7 @@ import {
 import type { BookingDetail } from './types';
 import { StaffDropoffUpload } from './StaffDropoffUpload';
 import { SendMessage } from './SendMessage';
+import { TextsBlocked } from './TextsBlocked';
 
 const RESENDABLE: Array<{ key: string; label: string }> = [
   { key: 'contract_to_sign', label: 'Contract link' },
@@ -429,6 +430,10 @@ export function BookingModal({
               ))}
             </div>
           )}
+
+          {detail.textsBlocked ? (
+            <TextsBlocked bookingId={c.id} name={c.name} kind={detail.textsBlocked} onResult={setFlash} />
+          ) : null}
 
           <SendMessage bookingId={c.id} name={c.name} onResult={setFlash} />
 

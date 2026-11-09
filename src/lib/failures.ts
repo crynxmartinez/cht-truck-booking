@@ -22,7 +22,7 @@ export function explainFailure(error: string | null | undefined, channel: string
       kind: 'dnd',
       reason: 'This person has Do Not Disturb switched on in GoHighLevel, so texts to them are blocked.',
       action:
-        'We cannot text them. Call them, or check they received the email. Leave Do Not Disturb as it is unless they ask you to change it.',
+        'We cannot text them. Call them, or check they received the email. If they tell you they want texts again, open the booking and use Turn texts back on, which records that they asked.',
     };
   }
 
@@ -30,7 +30,8 @@ export function explainFailure(error: string | null | undefined, channel: string
     return {
       kind: 'unsubscribed',
       reason: 'They replied STOP at some point, so they have opted out of our texts.',
-      action: 'Do not text them again. Call them, and check they received the email.',
+      action:
+        'Do not text them again. Call them, and check they received the email. If they ask for texts again, open the booking and use Turn texts back on; they will also need to reply START to our number.',
     };
   }
 

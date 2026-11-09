@@ -1,4 +1,4 @@
-import { explainFailure } from './failures';
+import { blockedKind } from './sms-consent';
 
 /**
  * A message the office writes by hand to a renter.
@@ -9,7 +9,8 @@ import { explainFailure } from './failures';
  *
  * The one hard rule: a text is never sent to someone who has opted out or has
  * Do Not Disturb on. It is dropped, the office is told why, and the email goes
- * if they chose one. There is no way round it from here.
+ * if they chose one. The only way back is the renter asking for texts again,
+ * recorded on the booking (sms-consent.ts); nothing here goes round it.
  */
 
 export const MAX_SMS_LENGTH = 480; // three text segments
@@ -39,13 +40,9 @@ export type Prepared = { ok: true; preview: Preview } | { ok: false; errors: str
  * second driver says nothing about the renter, and the reverse.
  */
 function textBlocked(history: MessageHistory[], phone: string): string | null {
-  const latest = history
-    .filter((m) => m.channel === 'SMS' && m.to === phone)
-    .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
-  if (!latest || latest.status !== 'FAILED') return null;
-  const why = explainFailure(latest.error, 'SMS');
-  if (why.kind === 'dnd') return 'has Do Not Disturb switched on, so texts to them are blocked';
-  if (why.kind === 'unsubscribed') return 'has opted out of our texts';
+  const kind = blockedKind(history, phone);
+  if (kind === 'dnd') return 'has Do Not Disturb switched on, so texts to them are blocked';
+  if (kind === 'unsubscribed') return 'has opted out of our texts';
   return null;
 }
 

@@ -18,6 +18,8 @@ import { isEmail, toE164 } from '@/lib/http';
 import { loadSettings } from '@/lib/settings';
 import { canAddMainAdmin, canStopBeingMainAdmin, type Approver } from '@/lib/approvers';
 import { prepareOfficeMessage, type OfficeMessageInput, type Preview } from '@/lib/office-message';
+import { checkConsent, consentLogLine } from '@/lib/sms-consent';
+import { allowSms, getSmsBlock } from '@/lib/ghl';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -124,6 +126,52 @@ export async function resend(bookingId: string, template: string): Promise<Actio
   if (res.errors.length) return { ok: false, error: res.errors.join('; ') };
   if (!res.sent.length) return { ok: false, error: 'Nothing was sent — check the GoHighLevel connection.' };
   return done(`Resent by ${res.sent.join(' and ').toLowerCase()}.`);
+}
+
+/**
+ * Turns a renter's texts back on, because THEY asked. This never happens on its
+ * own: the office has to say how the renter asked and leave a line another person
+ * can check, and the block is read back from GoHighLevel afterwards so the
+ * answer is what GoHighLevel now says, not what we hoped. Only texts change;
+ * their call and email settings are not touched.
+ */
+export async function turnTextsBackOn(bookingId: string, way: string, note: string): Promise<ActionResult> {
+  const who = await actor();
+  const consent = checkConsent(way, note);
+  if (!consent.ok) return { ok: false, error: consent.error };
+
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { ghlContactId: true, reference: true },
+  });
+  if (!booking) return { ok: false, error: 'That booking was not found.' };
+  if (!booking.ghlContactId) {
+    return { ok: false, error: 'No text has been sent to this renter yet, so there is nothing to turn back on.' };
+  }
+
+  const before = await getSmsBlock(booking.ghlContactId);
+  if (!before.ok) return { ok: false, error: `Could not check GoHighLevel: ${before.error}` };
+  if (!before.data.blocked) {
+    return { ok: false, error: 'GoHighLevel already shows texts as on for this renter. Use Resend to send the message again.' };
+  }
+
+  const set = await allowSms(booking.ghlContactId, 'Renter asked for texts again (recorded in the truck CRM)');
+  if (!set.ok) {
+    await logEvent(bookingId, 'texts_restore_failed', `Tried to turn texts back on: ${set.error}`, who);
+    return { ok: false, error: `GoHighLevel did not accept the change: ${set.error}` };
+  }
+
+  const after = await getSmsBlock(booking.ghlContactId);
+  if (!after.ok || after.data.blocked) {
+    await logEvent(bookingId, 'texts_restore_failed', 'Asked GoHighLevel to turn texts back on, but it still shows them as blocked.', who);
+    return {
+      ok: false,
+      error: 'GoHighLevel still shows texts as blocked for this renter, so they were not turned back on. Check the contact in GoHighLevel.',
+    };
+  }
+
+  await logEvent(bookingId, 'texts_restored', consentLogLine(consent), who);
+  return done('Texts are back on for this renter. Press Resend for any message they missed.');
 }
 
 /**

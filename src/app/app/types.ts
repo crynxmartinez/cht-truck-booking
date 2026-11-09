@@ -98,6 +98,8 @@ export type BookingDetail = {
   checklists: ChecklistData[];
   messages: MessageData[];
   events: EventData[];
+  /** Set when texts to this renter are blocked (Do Not Disturb or STOP), so the office can record that they asked for texts again. */
+  textsBlocked: 'dnd' | 'unsubscribed' | null;
   /** Empty unless the booking is accepted and its pickup day has not arrived. */
   swap: SwapOption[];
   /** The active main admins. With more than one, whoever approves picks themselves. */

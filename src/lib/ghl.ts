@@ -110,6 +110,32 @@ export async function findContactByEmail(email: string): Promise<GhlResult<{ con
   return { ok: true, data: { contactId: hit?.id ? String(hit.id) : null } };
 }
 
+/**
+ * Where a contact's text blocking stands in GoHighLevel: 'active' and 'permanent'
+ * both mean texts are blocked; 'inactive' (or nothing set) means they are not.
+ */
+export async function getSmsBlock(contactId: string): Promise<GhlResult<{ blocked: boolean; status: string }>> {
+  const res = await ghlFetch<any>(`/contacts/${encodeURIComponent(contactId)}`, { method: 'GET' });
+  if (!res.ok) return res;
+  const contact = res.data?.contact ?? res.data ?? {};
+  const status = String(contact.dndSettings?.SMS?.status ?? (contact.dnd ? 'active' : 'inactive')).toLowerCase();
+  return { ok: true, data: { blocked: status === 'active' || status === 'permanent', status } };
+}
+
+/**
+ * Switches off Do Not Disturb for TEXTS ONLY on one contact. Calls and email
+ * settings are left exactly as they are. Only for a renter who has asked for
+ * texts again; the caller records that.
+ */
+export async function allowSms(contactId: string, reason: string): Promise<GhlResult<Record<string, never>>> {
+  const res = await ghlFetch<any>(`/contacts/${encodeURIComponent(contactId)}`, {
+    method: 'PUT',
+    body: { dndSettings: { SMS: { status: 'inactive', message: reason.slice(0, 200), code: '' } } },
+  });
+  if (!res.ok) return res;
+  return { ok: true, data: {} };
+}
+
 // ---------------------------------------------------------------- messaging
 
 export async function sendSms(contactId: string, message: string): Promise<GhlResult<{ messageId?: string }>> {

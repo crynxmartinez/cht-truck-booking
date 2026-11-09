@@ -4,6 +4,7 @@ import { freeTrucksFor } from '@/lib/availability';
 import { swapWindowOpen } from '@/lib/truck-swap';
 import { checklistUrl, signUrl } from '@/lib/tokens';
 import { signedFilePath } from '@/lib/file-urls';
+import { blockedKind } from '@/lib/sms-consent';
 import type { BookingDetail, CardData, SwapOption } from './types';
 
 /**
@@ -190,6 +191,16 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
       subject: m.subject,
       body: m.body,
     })),
+    textsBlocked: blockedKind(
+      b.messages.map((m) => ({
+        channel: m.channel,
+        to: m.toAddress,
+        status: m.status,
+        error: m.error,
+        at: m.sentAt ?? m.createdAt,
+      })),
+      b.phone,
+    ),
     events: b.events.map((e) => ({
       type: e.type,
       detail: e.detail,

@@ -34,6 +34,8 @@ const envQuotaBytes = num('BLOB_QUOTA_BYTES', 1_073_741_824);
 export const BASELINE = {
   minLeadDays: num('MIN_LEAD_DAYS', 1),
   maxMonthsAhead: num('MAX_MONTHS_AHEAD', 3),
+  customerMaxDays: num('CUSTOMER_MAX_DAYS', 3),
+  bufferDays: num('BUFFER_DAYS', 0),
   pickupSmsHour: num('PICKUP_SMS_HOUR', 6),
   pickupReminderHour: num('PICKUP_REMINDER_HOUR', 10),
   noPickupCheckHour: num('NO_PICKUP_CHECK_HOUR', 14),
@@ -62,6 +64,14 @@ export const config = {
   },
   get maxMonthsAhead() {
     return override('maxMonthsAhead', BASELINE.maxMonthsAhead);
+  },
+  /** The most days a customer can pick on the booking page. The office has its own, wider limit. */
+  get customerMaxDays() {
+    return override('customerMaxDays', BASELINE.customerMaxDays);
+  },
+  /** Empty days customers must leave around other rentals. 0 means back to back. */
+  get bufferDays() {
+    return override('bufferDays', BASELINE.bufferDays);
   },
 
   timeZone: str('OPS_TIMEZONE', 'America/Los_Angeles'),

@@ -74,6 +74,14 @@
 '.pick.live{display:block}',
 '.pick b{color:var(--red)}',
 '.pick em{display:block;font-style:normal;color:var(--mut);font-size:12.5px;margin-top:3px}',
+'.day.free.short::after{background:#F59E0B}',
+'.lens{display:flex;gap:8px;margin:11px 0 4px;flex-wrap:wrap}',
+'.lens button{flex:1 1 0;min-width:84px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer;color:var(--ink)}',
+'.lens button:hover:not([disabled]){border-color:var(--red);color:var(--red)}',
+'.lens button.on{background:var(--red);border-color:var(--red);color:#fff}',
+'.lens button[disabled]{opacity:.4;cursor:not-allowed;text-decoration:line-through}',
+'.lens button:focus-visible{outline:2px solid var(--red);outline-offset:2px}',
+'.pick .why{color:var(--mut);font-size:12.5px;margin:2px 0 4px}',
 
 '.row{margin-bottom:15px}',
 '.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}',
@@ -163,7 +171,7 @@
 '<div class="wrap"><div class="card">',
 '<div class="hd">',
 '<div class="logo">C<em>&#8962;</em>RY HOME TEAM</div>',
-'<div class="sub">3-Day Truck Rental</div>',
+'<div class="sub">Truck Rental</div>',
 '<div class="steps"><i data-dot="0"></i><i data-dot="1"></i><i data-dot="2"></i></div>',
 '</div>',
 
@@ -172,14 +180,15 @@
 /* ---- 1. calendar */
 '<section data-screen="cal">',
 '<h2>Pick your pickup date</h2>',
-'<p class="lede">Your rental runs ' + CFG.rentalDays + ' days from the date you choose.</p>',
+'<p class="lede">Choose your pickup date, then how many days you need.</p>',
 '<div class="alert" data-el="calAlert"></div>',
 '<div class="calbar"><b data-el="monthLabel">&nbsp;</b>',
 '<div class="nav"><button type="button" data-el="prev" aria-label="Previous month">&#8249;</button>',
 '<button type="button" data-el="next" aria-label="Next month">&#8250;</button></div></div>',
 '<div class="dow"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>',
 '<div data-el="calBody"></div>',
-'<div class="legend"><span><i style="background:#059669"></i>Available</span><span><i style="background:#C4C7CE"></i>Fully booked</span></div>',
+'<div class="legend"><span><i style="background:#059669"></i>Available</span><span><i style="background:#F59E0B"></i>Shorter stay only</span><span><i style="background:#C4C7CE"></i>Fully booked</span></div>',
+'<p class="note" style="margin-top:12px">Need a truck today? Same-day rentals are arranged with our team, so please contact Cory Home Team directly.</p>',
 '<div class="pick" data-el="pick"></div>',
 '</section>',
 
@@ -271,7 +280,11 @@
   var S = {
     step: 0,                                    // 0 cal, 1 details, 2 docs, 3 done
     date: null,
-    avail: {},                                  // iso -> trucksFree
+    avail: {},                                  // iso -> trucksFree (what an older server sends)
+    maxDays: {},                                // iso -> most days that can be booked from that date
+    cap: CFG.rentalDays,                        // the most days a customer may choose
+    days: null,                                 // the length they chose
+    daysPicked: false,                          // did they choose, or did we suggest?
     loadedMonths: {},
     view: null,                                 // {y, m} currently shown month
     draftId: null,
@@ -328,7 +341,7 @@
 
   function syncGo() {
     var ok = false;
-    if (S.step === 0) ok = !!S.date;
+    if (S.step === 0) ok = !!S.date && S.days >= 1;
     if (S.step === 1) ok = ['firstName', 'lastName', 'email', 'phone'].every(function (n) { return $('[name=' + n + ']').value.trim(); });
     if (S.step === 2) ok = !!(S.files.license && S.files.insurance);
     el('go').disabled = !ok || S.busy;
@@ -359,11 +372,12 @@
     for (var i = 0; i < firstDow; i++) out += '<div class="day pad"></div>';
     for (var d = 1; d <= count; d++) {
       var iso = ymd(y, m, d);
-      var free = S.avail[iso] > 0 && iso >= EARLIEST && iso <= LATEST;
-      var cls  = free ? 'free' : 'full';
+      var fit  = S.maxDays[iso] || 0;
+      var free = fit > 0 && iso >= EARLIEST && iso <= LATEST;
+      var cls  = free ? (fit < S.cap ? 'free short' : 'free') : 'full';
       if (S.date === iso) cls += ' sel';
       out += free
-        ? '<button type="button" class="day ' + cls + '" data-date="' + iso + '" aria-label="' + esc(pretty(iso)) + ', available">' + d + '</button>'
+        ? '<button type="button" class="day ' + cls + '" data-date="' + iso + '" aria-label="' + esc(pretty(iso)) + ', available for ' + (fit === 1 ? '1 day' : 'up to ' + fit + ' days') + '">' + d + '</button>'
         : '<div class="day ' + cls + '" aria-disabled="true">' + d + '</div>';
     }
     out += '</div>';
@@ -383,15 +397,21 @@
     return fetch(CFG.apiBase + '/api/public/availability?from=' + from + '&to=' + to, { headers: { Accept: 'application/json' } })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (j) {
-        Object.keys(j.days || {}).forEach(function (iso) { S.avail[iso] = j.days[iso].trucksFree; });
+        if (j.maxDays) S.cap = j.maxDays;
+        Object.keys(j.days || {}).forEach(function (iso) {
+          S.avail[iso] = j.days[iso].trucksFree;
+          // A server that only knows trucksFree means the full house length.
+          S.maxDays[iso] = typeof j.days[iso].maxDays === 'number' ? j.days[iso].maxDays : (j.days[iso].trucksFree > 0 ? CFG.rentalDays : 0);
+        });
         S.loadedMonths[key] = true;
         alertOn('calAlert', '');
         renderCal();
+        reconcilePick();
       })
       .catch(function () {
         // Fail open: let people request a date, we confirm truck availability by hand.
         var count = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-        for (var d = 1; d <= count; d++) S.avail[ymd(y, m, d)] = 1;
+        for (var d = 1; d <= count; d++) { S.avail[ymd(y, m, d)] = 1; S.maxDays[ymd(y, m, d)] = S.cap; }
         S.loadedMonths[key] = true;
         alertOn('calAlert', 'We could not load live availability. You can still request a date and we will confirm by text.');
         renderCal();
@@ -407,16 +427,58 @@
     renderCal(); loadMonth(S.view.y, S.view.m);
   });
 
+  /** The chosen date, the length buttons (greyed where they do not fit), and when it goes back. */
+  function renderPick() {
+    var fit = S.maxDays[S.date] || 0;
+    var last = addDays(S.date, S.days - 1);
+    var btns = '';
+    for (var n = 1; n <= S.cap; n++) {
+      btns += '<button type="button" data-days="' + n + '" class="' + (S.days === n ? 'on' : '') + '"' +
+        (n > fit ? ' disabled aria-disabled="true"' : '') + ' aria-pressed="' + (S.days === n) + '">' +
+        n + (n === 1 ? ' day' : ' days') + '</button>';
+    }
+    el('pick').innerHTML =
+      'Pickup <b>' + esc(pretty(S.date)) + '</b>' +
+      '<div class="lens" role="group" aria-label="How many days">' + btns + '</div>' +
+      (fit < S.cap
+        ? '<div class="why">Only ' + (fit === 1 ? '1 day is' : fit + ' days are') + ' free from this date, because the truck is booked after that.</div>'
+        : '') +
+      '<em>Return by ' + esc(pretty(last)) + ' &middot; ' + esc(CFG.pickupAddress) + '</em>';
+    el('pick').classList.add('live');
+  }
+
+  /** After availability reloads: keep what still fits, drop what no longer does. */
+  function reconcilePick() {
+    if (!S.date) return;
+    var fit = S.maxDays[S.date] || 0;
+    if (fit < 1) {
+      S.date = null; S.days = null;
+      el('pick').classList.remove('live');
+      renderCal(); syncGo();
+      return;
+    }
+    if (S.days > fit) S.days = fit;
+    renderPick(); syncGo();
+  }
+
   el('calBody').addEventListener('click', function (e) {
     var b = e.target.closest('[data-date]');
     if (!b) return;
     S.date = b.getAttribute('data-date');
+    var fit = S.maxDays[S.date] || 0;
+    // Keep their earlier choice if it still fits; otherwise offer the longest that does.
+    S.days = S.daysPicked && S.days <= fit ? S.days : Math.min(S.cap, fit);
     renderCal();
-    var last = addDays(S.date, CFG.rentalDays - 1);
-    el('pick').innerHTML =
-      'Pickup <b>' + esc(pretty(S.date)) + '</b>' +
-      '<em>Return by ' + esc(pretty(last)) + ' &middot; ' + esc(CFG.pickupAddress) + '</em>';
-    el('pick').classList.add('live');
+    renderPick();
+    syncGo();
+  });
+
+  el('pick').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-days]');
+    if (!b || b.disabled) return;
+    S.days = +b.getAttribute('data-days');
+    S.daysPicked = true;
+    renderPick();
     syncGo();
   });
 
@@ -579,6 +641,7 @@
     var payload = {
       draftId:    S.draftId,
       pickupDate: S.date,
+      days:       S.days,
       firstName:  $('[name=firstName]').value.trim(),
       lastName:   $('[name=lastName]').value.trim(),
       email:      $('[name=email]').value.trim().toLowerCase(),
@@ -622,7 +685,8 @@
           el('recap').innerHTML =
             '<div><span>Reference</span><b>' + esc(j.reference || '—') + '</b></div>' +
             '<div><span>Pickup date</span><b>' + esc(pretty(S.date)) + '</b></div>' +
-            '<div><span>Return by</span><b>' + esc(pretty(addDays(S.date, CFG.rentalDays - 1))) + '</b></div>' +
+            '<div><span>Length</span><b>' + S.days + (S.days === 1 ? ' day' : ' days') + '</b></div>' +
+            '<div><span>Return by</span><b>' + esc(pretty(addDays(S.date, S.days - 1))) + '</b></div>' +
             '<div><span>Pickup location</span><b>' + esc(CFG.pickupAddress) + '</b></div>' +
             '<div><span>Confirmation to</span><b>' + esc(payload.email) + '</b></div>';
           show(3);
@@ -632,6 +696,7 @@
         clearTimeout(reassure);
         curtainOff();
         S.busy = false;
+        S.loadedMonths = {};   // what is free may have changed; the calendar reloads when they go back
         alertOn('docAlert', err.message === 'Failed to fetch'
           ? 'We could not reach the booking server. Check your connection and try again.'
           : err.message);
@@ -655,6 +720,7 @@
 
   el('back').addEventListener('click', function () {
     if (S.step > 0) show(S.step - 1);
+    if (S.step === 0) loadMonth(S.view.y, S.view.m);
   });
 
   /* --------------------------------------------------------- boot */

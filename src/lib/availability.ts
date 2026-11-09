@@ -12,6 +12,8 @@ import {
   rentalWindow,
   todayInOps,
 } from './dates';
+import { SLACK_CAP, chooseTruck, freeRun, maxDaysOn, withBuffer, type TruckHolds } from './booking-fit';
+import { customerDefaultDays } from './booking-rules';
 import { checkSwap } from './truck-swap';
 import { OVERLAP_MESSAGE, isOverlapViolation } from './overlap-guard';
 
@@ -31,26 +33,37 @@ export const HOLDING_STAGES: Stage[] = [
 
 export type DayAvailability = {
   date: IsoDate;
+  /**
+   * Trucks free for the whole house length. Kept for booking pages that were
+   * loaded before customers could choose a length: they judge a date by this.
+   */
   trucksFree: number;
   freeTruckIds: string[];
+  /** The most days a customer could book from this date. 0 means the date is not offered. */
+  maxDays: number;
 };
 
 type Hold = { truckId: string | null; blockStart: Date; blockEnd: Date };
 
 /**
- * Which trucks could start a rental on each date in [from, to].
+ * What a customer could book from each date in [from, to].
  *
- * A date is offered when at least one active truck has no booking and no
- * blackout overlapping the *whole* window that would start there — not merely
- * the day itself. Booking a Monday when Tuesday is already taken would strand
- * the renter mid-rental, so those dates are closed too.
+ * A date is offered when at least one truck is free that day, even if it is
+ * booked again two days later: the customer is then offered the days that fit
+ * (1 or 2) rather than being shut out. `maxDays` says how many. Dates before
+ * the earliest day customers may book, or after the furthest, offer nothing.
+ *
+ * Customers also leave `bufferDays` empty around other rentals (0 by default,
+ * which means back to back). The office does not use this function.
  */
 export async function getAvailability(from: IsoDate, to: IsoDate): Promise<DayAvailability[]> {
-  const span = config.rentalBlockDays;
+  const cap = Math.max(1, config.customerMaxDays);
+  const buffer = Math.max(0, config.bufferDays);
+  const houseDays = customerDefaultDays(cap, config.rentalBlockDays);
 
-  // Pull anything that could overlap a window starting anywhere in the range.
-  const rangeStart = isoToDate(addDays(from, -span));
-  const rangeEnd = isoToDate(addDays(to, span));
+  // Pull anything that could touch a rental starting anywhere in the range.
+  const rangeStart = isoToDate(addDays(from, -buffer));
+  const rangeEnd = isoToDate(addDays(to, cap + buffer));
 
   const [trucks, bookings, blackouts] = await Promise.all([
     prisma.truck.findMany({ where: { active: true }, select: { id: true, code: true }, orderBy: { code: 'asc' } }),
@@ -74,11 +87,10 @@ export async function getAvailability(from: IsoDate, to: IsoDate): Promise<DayAv
     ...blackouts.map((b) => ({ truckId: b.truckId, blockStart: b.startDate, blockEnd: b.endDate })),
   ];
 
-  const byTruck = new Map<string, Array<{ start: IsoDate; end: IsoDate }>>();
-  for (const t of trucks) byTruck.set(t.id, []);
+  const byTruck: TruckHolds[] = trucks.map((t) => ({ id: t.id, code: t.code, holds: [] }));
   for (const h of holds) {
     if (!h.truckId) continue;
-    byTruck.get(h.truckId)?.push({ start: dateToIso(h.blockStart), end: dateToIso(h.blockEnd) });
+    byTruck.find((t) => t.id === h.truckId)?.holds.push({ start: dateToIso(h.blockStart), end: dateToIso(h.blockEnd) });
   }
 
   const floor = earliestBookable();
@@ -87,14 +99,11 @@ export async function getAvailability(from: IsoDate, to: IsoDate): Promise<DayAv
   const out: DayAvailability[] = [];
   for (let d = from; d <= to; d = addDays(d, 1)) {
     if (d < floor || d > ceiling) {
-      out.push({ date: d, trucksFree: 0, freeTruckIds: [] });
+      out.push({ date: d, trucksFree: 0, freeTruckIds: [], maxDays: 0 });
       continue;
     }
-    const w = rentalWindow(d);
-    const free = trucks
-      .filter((t) => !(byTruck.get(t.id) ?? []).some((h) => overlaps(w.blockStart, w.blockEnd, h.start, h.end)))
-      .map((t) => t.id);
-    out.push({ date: d, trucksFree: free.length, freeTruckIds: free });
+    const free = byTruck.filter((t) => freeRun(withBuffer(t.holds, buffer), d, houseDays) >= houseDays).map((t) => t.id);
+    out.push({ date: d, trucksFree: free.length, freeTruckIds: free, maxDays: maxDaysOn(byTruck, d, cap, buffer) });
   }
   return out;
 }
@@ -152,6 +161,11 @@ export async function createBookingWithTruck(input: {
   days?: number;
   /** Fail rather than silently substituting another truck. */
   mustUseTruck?: boolean;
+  /**
+   * Empty days to leave around other rentals. Customers pass the setting; the
+   * office passes nothing, so it can book straight through it.
+   */
+  buffer?: number;
 }) {
   const w = rentalWindow(input.pickupDate, input.days ?? config.rentalBlockDays);
 
@@ -171,43 +185,57 @@ export async function createBookingWithTruck(input: {
 
       const start = isoToDate(w.blockStart);
       const end = isoToDate(w.blockEnd);
+      const length = Math.max(1, input.days ?? config.rentalBlockDays);
+      const buffer = Math.max(0, input.buffer ?? 0);
 
-      const [clashingBookings, clashingBlackouts] = await Promise.all([
+      // Look past the rental too, to tell which truck is the tighter fit.
+      const lookFrom = isoToDate(addDays(w.blockStart, -buffer));
+      const lookTo = isoToDate(addDays(w.blockEnd, SLACK_CAP + buffer));
+      const ids = trucks.map((t) => t.id);
+
+      const [bookings, blackouts] = await Promise.all([
         tx.booking.findMany({
           where: {
             stage: { in: HOLDING_STAGES },
-            truckId: { in: trucks.map((t) => t.id) },
-            blockStart: { lte: end },
-            blockEnd: { gte: start },
+            truckId: { in: ids },
+            blockStart: { lte: lookTo },
+            blockEnd: { gte: lookFrom },
           },
-          select: { truckId: true },
+          select: { truckId: true, blockStart: true, blockEnd: true },
         }),
         tx.blackoutDate.findMany({
-          where: {
-            truckId: { in: trucks.map((t) => t.id) },
-            startDate: { lte: end },
-            endDate: { gte: start },
-          },
-          select: { truckId: true },
+          where: { truckId: { in: ids }, startDate: { lte: lookTo }, endDate: { gte: lookFrom } },
+          select: { truckId: true, startDate: true, endDate: true },
         }),
       ]);
 
-      const taken = new Set<string>();
-      for (const b of clashingBookings) if (b.truckId) taken.add(b.truckId);
-      for (const b of clashingBlackouts) taken.add(b.truckId);
+      const holds: TruckHolds[] = trucks.map((t) => ({
+        id: t.id,
+        code: t.code,
+        holds: [
+          ...bookings.filter((b) => b.truckId === t.id).map((b) => ({ start: dateToIso(b.blockStart), end: dateToIso(b.blockEnd) })),
+          ...blackouts.filter((b) => b.truckId === t.id).map((b) => ({ start: dateToIso(b.startDate), end: dateToIso(b.endDate) })),
+        ],
+      }));
 
-      const free = trucks.filter((t) => !taken.has(t.id));
-      if (free.length === 0) throw new NoTruckAvailableError();
-
-      // Honour an explicit choice if it is still free, otherwise A before B.
-      const asked = input.preferTruckId ? free.find((t) => t.id === input.preferTruckId) : undefined;
-      if (input.preferTruckId && input.mustUseTruck && !asked) {
+      // An explicit choice is honoured if that truck is free; otherwise the tightest fit.
+      const chosen = chooseTruck(holds, w.blockStart, length, buffer, input.preferTruckId);
+      if (input.preferTruckId && input.mustUseTruck && chosen?.id !== input.preferTruckId) {
         // The office picked that truck on purpose. Quietly handing them the
         // other one is how somebody turns up expecting the big van.
         const code = trucks.find((t) => t.id === input.preferTruckId)?.code ?? '?';
         throw new NoTruckAvailableError(`Truck ${code} is not free for those dates.`);
       }
-      const chosen = asked || free[0];
+      if (!chosen) {
+        // Nothing fits for that long. If something fits for less, say how much.
+        const fit = maxDaysOn(holds, w.blockStart, length, buffer);
+        if (fit > 0) {
+          const some = fit === 1 ? '1 day is' : `${fit} days are`;
+          const choose = fit === 1 ? '1 day' : `up to ${fit} days`;
+          throw new NoTruckAvailableError(`Only ${some} free from that date. Please choose ${choose} or another date.`);
+        }
+        throw new NoTruckAvailableError();
+      }
 
       return tx.booking.create({
         data: {

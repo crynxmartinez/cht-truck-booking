@@ -1,4 +1,6 @@
 import { getAvailability } from '@/lib/availability';
+import { customerDefaultDays } from '@/lib/booking-rules';
+import { config } from '@/lib/config';
 import { isIsoDate, todayInOps, addDays, latestBookable } from '@/lib/dates';
 import { json, preflight, clientIp, rateLimit } from '@/lib/http';
 import { loadSettings } from '@/lib/settings';
@@ -45,11 +47,18 @@ export async function GET(req: Request) {
 
   try {
     const days = await getAvailability(from, cappedTo);
-    const map: Record<string, { trucksFree: number }> = {};
-    for (const d of days) map[d.date] = { trucksFree: d.trucksFree };
+    const map: Record<string, { trucksFree: number; maxDays: number }> = {};
+    for (const d of days) map[d.date] = { trucksFree: d.trucksFree, maxDays: d.maxDays };
 
     return json(
-      { days: map, earliest: addDays(today, 0), horizon: hardEnd },
+      {
+        days: map,
+        earliest: addDays(today, 0),
+        horizon: hardEnd,
+        // For the length picker: the most a customer can choose, and what to start on.
+        maxDays: config.customerMaxDays,
+        defaultDays: customerDefaultDays(config.customerMaxDays, config.rentalBlockDays),
+      },
       { origin },
     );
   } catch (err) {

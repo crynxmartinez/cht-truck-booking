@@ -14,6 +14,8 @@ import { hourLabel } from './messages';
 export type SettingKey =
   | 'minLeadDays'
   | 'maxMonthsAhead'
+  | 'customerMaxDays'
+  | 'bufferDays'
   | 'pickupSmsHour'
   | 'pickupReminderHour'
   | 'noPickupCheckHour'
@@ -66,6 +68,26 @@ export const SETTINGS: readonly SettingDef[] = [
     unit: 'months',
     min: 1,
     max: 12,
+  },
+  {
+    key: 'customerMaxDays',
+    group: 'Booking',
+    label: 'Most days a customer can choose',
+    help: 'On the booking page, customers pick a date and then how many days, from 1 up to this many. The office is not limited by it and can book up to 30 days.',
+    kind: 'int',
+    unit: 'days',
+    min: 1,
+    max: 7,
+  },
+  {
+    key: 'bufferDays',
+    group: 'Booking',
+    label: 'Empty days between rentals (customers only)',
+    help: 'Days a truck must stay free before and after someone else’s rental, for bookings made on the website. 0 means the next customer can pick up the day after the last one returns. The office ignores this and can book straight through it.',
+    kind: 'int',
+    unit: 'days',
+    min: 0,
+    max: 3,
   },
   {
     key: 'pickupSmsHour',

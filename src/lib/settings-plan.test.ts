@@ -5,6 +5,8 @@ import { SETTINGS, type SettingKey } from './settings-catalog';
 const baseline: Record<SettingKey, number | boolean> = {
   minLeadDays: 1,
   maxMonthsAhead: 3,
+  customerMaxDays: 3,
+  bufferDays: 0,
   pickupSmsHour: 6,
   pickupReminderHour: 10,
   noPickupCheckHour: 14,

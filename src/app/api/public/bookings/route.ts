@@ -4,7 +4,9 @@ import { prisma } from '@/lib/db';
 import { createBookingWithTruck, NoTruckAvailableError } from '@/lib/availability';
 import { createPaperwork } from '@/lib/bookings';
 import { syncBookingToCalendar } from '@/lib/calendar-sync';
-import { earliestBookable, isIsoDate, latestBookable, rentalWindow } from '@/lib/dates';
+import { checkBooking, customerDefaultDays, requestedDays } from '@/lib/booking-rules';
+import { config } from '@/lib/config';
+import { isIsoDate, latestBookable, rentalWindow, todayInOps } from '@/lib/dates';
 import { cleanString, clientIp, isEmail, json, preflight, rateLimit, toE164 } from '@/lib/http';
 import { newReference } from '@/lib/tokens';
 import { adoptDraftDocuments } from '@/lib/storage';
@@ -66,12 +68,17 @@ export async function POST(req: Request) {
   if (!phone) problems.push('Enter a 10-digit US mobile number.');
   if (problems.length) return json({ error: problems[0], problems }, { status: 400, origin });
 
-  if (pickupDate < earliestBookable()) {
-    return json({ error: 'That date is too soon — please choose a later one.' }, { status: 400, origin });
-  }
-  if (pickupDate > latestBookable()) {
-    return json({ error: 'That date is further out than we take bookings.' }, { status: 400, origin });
-  }
+  // The same rules the booking page shows, checked here because this is the
+  // surface that actually matters: not today, not further out than we take
+  // bookings, and a length from 1 to the most customers may choose.
+  const days = requestedDays(body.days, customerDefaultDays(config.customerMaxDays, config.rentalBlockDays));
+  const verdict = checkBooking('customer', pickupDate, days, {
+    today: todayInOps(),
+    minLeadDays: config.minLeadDays,
+    latest: latestBookable(),
+    customerMaxDays: config.customerMaxDays,
+  });
+  if (!verdict.ok) return json({ error: verdict.error }, { status: 400, origin });
 
   // Both documents must be on file. The widget enforces this too, but the API
   // is the surface that actually matters.
@@ -100,6 +107,9 @@ export async function POST(req: Request) {
       phone,
       draftId,
       sourceUrl: sourceUrl || null,
+      days,
+      // Customers leave the empty days set in Settings around other rentals.
+      buffer: config.bufferDays,
     });
   } catch (err) {
     if (err instanceof NoTruckAvailableError) {
@@ -109,7 +119,7 @@ export async function POST(req: Request) {
     return json({ error: 'Something went wrong creating your booking. Please try again.' }, { status: 500, origin });
   }
 
-  const window = rentalWindow(pickupDate);
+  const window = rentalWindow(pickupDate, days);
 
   // ---- paperwork ---------------------------------------------------------
   try {
@@ -120,7 +130,7 @@ export async function POST(req: Request) {
     await logEvent(
       booking.id,
       'booking_created',
-      `Booked ${window.pickupDate} → ${window.returnDate}, auto-assigned Truck ${booking.truck?.code ?? '?'}`,
+      `Booked ${window.pickupDate} → ${window.returnDate} (${days} ${days === 1 ? 'day' : 'days'}), auto-assigned Truck ${booking.truck?.code ?? '?'}`,
       'renter',
       { ip },
     );
@@ -155,6 +165,7 @@ export async function POST(req: Request) {
       reference: booking.reference,
       pickupDate: window.pickupDate,
       returnDate: window.returnDate,
+      days,
     },
     { origin },
   );

@@ -116,17 +116,35 @@ it is stuck.
 
 ## Booking rules
 
-A booking blocks **one truck for `RENTAL_BLOCK_DAYS` (3) calendar days** from the
-pickup date. Pickup Monday → renter has Monday and Tuesday → back Wednesday →
-free again Thursday.
+The renter picks the **pickup date first, then the length: 1, 2 or 3 days** (the
+"Most days a customer can choose" setting, default 3). A booking blocks one truck from
+the pickup date for that many calendar days. Pickup Monday for 3 days → back Wednesday →
+free again Thursday. A length is never longer than the house maximum, and a customer
+cannot book today (the notice-time setting, default 1 day).
 
-A date is offered while at least one active truck has no booking and no blackout
-overlapping *the whole window starting there*. Booking a Monday when Tuesday is
-already taken would strand the renter mid-rental, so those dates close too.
+A date is offered while at least one truck is free for **at least one day** from it. If
+the truck is booked on the 3rd, the 1st offers 1 or 2 days (shown amber on the calendar,
+with the longer lengths greyed out) rather than closing, so a short rental can still use
+the gap. An optional "Empty days between rentals" setting (default 0) keeps a gap around
+customer bookings.
+
+The office is more flexible. It can book **today**, any length from 1 to 30 days, inside
+the notice time and the empty days, and pick the truck. What it can never do is
+double-book a truck or book a date that has passed. Anything the office does that a
+customer could not is noted in the booking's activity so it is visible later.
+
+Both paths run the same checks (`src/lib/booking-rules.ts`) and the same truck choice
+(`src/lib/booking-fit.ts`: the requested truck if free, otherwise the tightest fit so the
+other truck keeps the longest free run). A reminder to return the truck is texted at the
+return-time setting on the return date; for a 1-day rental it waits until pickup photos
+are in and it is at least midday, so it is never sent before the renter has the truck.
 
 Two people submitting for the last truck in the same second is handled inside a
-transaction that locks the truck rows first. One wins; the other gets a clean
-"that date just went" rather than a double booking.
+transaction that locks the truck rows first, with a database constraint behind it. One
+wins; the other gets a clean "that date just went" rather than a double booking.
+
+An older copy of the booking page that is still open keeps working: it sends no length,
+and the server uses the house default.
 
 ---
 

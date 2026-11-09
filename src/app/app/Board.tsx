@@ -39,6 +39,9 @@ const isWide = () => window.matchMedia(WIDE).matches;
 /** A click right after a drag is the drag ending, not someone opening the card. */
 const CLICK_GUARD_MS = 300;
 
+/** How long a just-moved card is shown in its new column while waiting for fresh data. */
+const PRETEND_MS = 5000;
+
 type PendingMove = { card: CardData; to: Stage; reasons: readonly string[]; needs: 'confirm' | 'override' };
 
 /** Picks the column under the pointer; with the keyboard (no pointer) falls back to overlap. */
@@ -87,8 +90,11 @@ export function Board({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  // Cards shown in their new column the moment they are dropped, until the server confirms.
+  // Cards the server has just moved, shown in their new column until fresh data arrives.
   const [moved, setMoved] = useState<Record<string, Stage>>({});
+  // Cards waiting on the server's answer. They stay put, dimmed, so a move that turns
+  // out to need a yes never shows the card in the wrong column first.
+  const [inflight, setInflight] = useState<Record<string, true>>({});
   const [dragging, setDragging] = useState<CardData | null>(null);
   const [dialog, setDialog] = useState<PendingMove | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -110,8 +116,17 @@ export function Board({
     }),
   );
 
-  // Fresh data from the server replaces the pretend positions.
-  useEffect(() => setMoved({}), [cards]);
+  // Fresh data from the server replaces a pretend position once it agrees with it.
+  useEffect(() => {
+    setMoved((m) => {
+      const next = { ...m };
+      for (const id of Object.keys(next)) {
+        const real = cards.find((c) => c.id === id);
+        if (!real || real.stage === next[id]) delete next[id];
+      }
+      return Object.keys(next).length === Object.keys(m).length ? m : next;
+    });
+  }, [cards]);
 
   const showToast = useCallback((kind: ToastData['kind'], text: string, undo?: () => void) => {
     toastId.current += 1;
@@ -148,15 +163,32 @@ export function Board({
    */
   const attempt = useCallback(
     async (card: CardData, to: Stage, ack: Ack, via: 'drag' | 'undo' = 'drag') => {
-      setMoved((m) => ({ ...m, [card.id]: to }));
+      setInflight((m) => ({ ...m, [card.id]: true }));
       let result: MoveResult;
       try {
         result = await moveCard(card.id, card.stage, to, ack, via);
       } catch {
         result = { ok: false, error: 'That did not work. Try again.' };
       }
+      setInflight((m) => {
+        const rest = { ...m };
+        delete rest[card.id];
+        return rest;
+      });
 
       if (result.ok) {
+        setMoved((m) => ({ ...m, [card.id]: to }));
+        // If fresh data never agrees (someone else changed it again), do not keep pretending.
+        setTimeout(
+          () =>
+            setMoved((m) => {
+              if (m[card.id] !== to) return m;
+              const rest = { ...m };
+              delete rest[card.id];
+              return rest;
+            }),
+          PRETEND_MS,
+        );
         startTransition(() => router.refresh());
         const touchesCompleted = card.stage === 'COMPLETED' || to === 'COMPLETED';
         if (via === 'undo') {
@@ -173,11 +205,6 @@ export function Board({
         return;
       }
 
-      setMoved((m) => {
-        const rest = { ...m };
-        delete rest[card.id];
-        return rest;
-      });
       if ('needs' in result) {
         if (via === 'undo') {
           showToast('err', 'That cannot be undone from here. Open the booking to move it.');
@@ -197,7 +224,7 @@ export function Board({
     setTimeout(() => (justDragged.current = false), CLICK_GUARD_MS);
     const card = cards.find((c) => c.id === e.active.id);
     const to = e.over?.id as Stage | undefined;
-    if (!card || !to || moved[card.id] || to === card.stage) return;
+    if (!card || !to || moved[card.id] || inflight[card.id] || to === card.stage) return;
     void attempt(card, to, 'none');
   }
 
@@ -211,7 +238,7 @@ export function Board({
   }
 
   const columns = (
-    <div className={`board${dragging ? ' dragging' : ''}`}>
+    <div className={`board${canDrag ? ' droppable' : ''}${dragging ? ' dragging' : ''}`}>
       {STAGE_META.map((meta) => {
         const items = visible.filter((c) => c.stage === meta.stage);
         return (
@@ -228,8 +255,8 @@ export function Board({
                 <DraggableCard
                   key={c.id}
                   card={c}
-                  canDrag={canDrag && !moved[c.id]}
-                  busy={loadingId === c.id || Boolean(moved[c.id])}
+                  canDrag={canDrag && !moved[c.id] && !inflight[c.id]}
+                  busy={loadingId === c.id || Boolean(inflight[c.id])}
                   defaultDays={defaultDays}
                   onOpen={() => openCard(c.id)}
                 />

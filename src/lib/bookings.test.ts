@@ -215,6 +215,13 @@ describe('moveBooking', () => {
     expect(h.markPurge).not.toHaveBeenCalled();
   });
 
+  it('still finishes the move and logs it when the removal dates cannot be set', async () => {
+    h.markPurge.mockRejectedValue(new Error('db hiccup'));
+    await moveBooking('b1', 'RETURNED' as never, 'COMPLETED' as never, 'ops', 'x');
+    expect(h.logEvent).toHaveBeenCalledWith('b1', 'purge_clock_failed', expect.any(String), 'system');
+    expect(h.logEvent).toHaveBeenCalledWith('b1', 'stage_change', 'x', 'ops', { from: 'RETURNED', to: 'COMPLETED' });
+  });
+
   it('leaves files alone on an ordinary move', async () => {
     await moveBooking('b1', 'NEW_BOOKING' as never, 'CONTRACT_SENT' as never, 'ops', 'x');
     expect(h.updateManyDocuments).not.toHaveBeenCalled();

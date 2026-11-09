@@ -68,7 +68,16 @@ export async function moveBooking(
     }
   });
 
-  if (to === Stage.COMPLETED) await markPurgeEligible(bookingId);
+  if (to === Stage.COMPLETED) {
+    // The move has happened. If the removal dates cannot be set, nothing will be
+    // removed for this booking (safe), and it is said so rather than hidden.
+    try {
+      await markPurgeEligible(bookingId);
+    } catch (err) {
+      console.error('could not set the removal dates after completing', err);
+      await logEvent(bookingId, 'purge_clock_failed', 'Completed, but the removal dates for the renter’s files could not be set.', 'system');
+    }
+  }
 
   await logEvent(bookingId, 'stage_change', detail, actor, { from, to });
 }

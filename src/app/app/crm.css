@@ -1273,3 +1273,9 @@
   .bcard.overlay { transform: none; }
   .board.dragging .col { transition: none; }
 }
+
+/* With dragging on, every column runs the full height, so blank space below a short column still drops into it. */
+.board.droppable {
+  align-items: stretch;
+  min-height: calc(100vh - 150px);
+}

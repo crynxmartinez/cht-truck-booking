@@ -57,7 +57,7 @@ function truckTaken(err: unknown): ActionResult | null {
 
 export type MoveResult =
   | { ok: true; message: string }
-  | { ok: false; error: string; stale?: boolean }
+  | { ok: false; error: string; stale?: boolean; /** where the booking is now, when known */ now?: Stage }
   /** Nothing was changed: the person has to agree to more first, then ask again. */
   | { ok: false; needs: 'confirm' | 'override'; reasons: readonly string[] };
 
@@ -88,7 +88,7 @@ export async function moveCard(
 
   if (typeof bookingId !== 'string' || !bookingId) return { ok: false, error: 'That booking was not understood.' };
   if (!isBoardStage(expectedFrom) || !isBoardStage(to)) return { ok: false, error: 'That move is not possible from here.' };
-  if (!isAck(ack) || !(via in MOVE_VIA)) return { ok: false, error: 'That move was not understood.' };
+  if (!isAck(ack) || !Object.hasOwn(MOVE_VIA, via)) return { ok: false, error: 'That move was not understood.' };
   if (via === 'drag' && !config.boardDrag) return { ok: false, error: 'Dragging is switched off in Settings.' };
 
   const booking = await prisma.booking.findUnique({
@@ -102,7 +102,7 @@ export async function moveCard(
   });
   if (!booking) return { ok: false, error: 'That booking was not found.' };
   if (booking.stage !== expectedFrom) {
-    return { ok: false, error: 'Someone already moved this booking. The board has been refreshed.', stale: true };
+    return { ok: false, error: 'Someone already moved this booking. The board has been refreshed.', stale: true, now: booking.stage };
   }
 
   const verdict = checkMove({

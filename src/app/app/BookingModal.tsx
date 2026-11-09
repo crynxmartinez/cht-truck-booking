@@ -64,13 +64,25 @@ export function BookingModal({
    */
   async function moveTo(to: Stage): Promise<ActionResult> {
     let ack: Ack = 'none';
+    let from: Stage = stage;
+    let followed = false;
     for (;;) {
-      const r = await moveCard(c.id, stage, to, ack, 'button');
+      const r = await moveCard(c.id, from, to, ack, 'button');
       if (r.ok) {
         setStage(to);
         return { ok: true, message: r.message };
       }
-      if ('error' in r) return { ok: false, error: r.error };
+      if ('error' in r) {
+        // Approving, or someone else, may have moved it since this window opened. The
+        // person asked for this column, so go there from where it really is, once.
+        if (r.stale && r.now && !followed) {
+          followed = true;
+          from = r.now;
+          setStage(r.now);
+          continue;
+        }
+        return { ok: false, error: r.error };
+      }
       const text =
         r.reasons.join('\n\n') +
         (r.needs === 'override' ? '\n\nMove it anyway? This is recorded on the booking.' : '\n\nMove it?');

@@ -1,0 +1,2 @@
+# Never upload the local backup of renters' files when deploying by hand.
+/back up

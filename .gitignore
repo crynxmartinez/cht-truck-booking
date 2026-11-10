@@ -47,3 +47,6 @@ sample pdf/
 
 # Test coverage output
 coverage/
+
+# Backup of renters' files (IDs, insurance, photos). Never commit; the repo is public.
+/back up/

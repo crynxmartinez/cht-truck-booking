@@ -51,6 +51,19 @@ const git: GitRunner = (a) => {
   }
 };
 
+/** The files live in Vercel Blob, which needs its key in .env. Say so plainly instead of failing deep inside a download. */
+function needBlobKey() {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return;
+  stop(
+    [
+      'The cloud storage key is missing from .env.',
+      'Add this line to the file .env in the code folder (it is private and ignored by Git):',
+      '    BLOB_READ_WRITE_TOKEN=<the key>',
+      'You can copy the key from Vercel: your project > Storage > the Blob store > the ".env.local" tab.',
+    ].join('\n'),
+  );
+}
+
 function stop(message: string): never {
   console.error(`\nStopped: ${message}\n`);
   process.exit(1);
@@ -109,6 +122,7 @@ async function run() {
   deps.hide = (await prisma.truck.findMany({ select: { lockboxCode: true } })).map((t) => t.lockboxCode).filter(Boolean);
   console.log(`Saving ${sources.length} bookings to ${dest}${dryRun ? '  (dry run: nothing will be written)' : ''}`);
 
+  if (!dryRun) needBlobKey();
   if (dryRun) {
     const fresh = sources.filter((s) => !manifest.bookings[s.id]).length;
     console.log(`  ${fresh} new, ${sources.length - fresh} already saved (changed ones are re-saved).`);
@@ -173,6 +187,7 @@ async function verify() {
 }
 
 async function clear() {
+  needBlobKey();
   await guardFolders();
   if (!second && !singleCopy) {
     stop(

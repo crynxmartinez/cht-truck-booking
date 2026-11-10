@@ -6,6 +6,7 @@ import { loadSettings } from '@/lib/settings';
 import { Board } from './Board';
 import type { BookingDetail } from './types';
 import { loadBookingDetail, toCard } from './detail';
+import { unreadFor } from '@/lib/conversation-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,9 +29,11 @@ export default async function BoardPage() {
     prisma.truck.findMany({ where: { active: true }, select: { id: true, code: true }, orderBy: { code: 'asc' } }),
   ]);
 
+  const unread = await unreadFor(bookings.map((b) => b.id));
+
   return (
     <Board
-      cards={bookings.map(toCard)}
+      cards={bookings.map((b) => ({ ...toCard(b), unread: unread.has(b.id) }))}
       trucks={trucks}
       defaultDays={customerDefaultDays(config.customerMaxDays, config.rentalBlockDays)}
       dragEnabled={config.boardDrag}

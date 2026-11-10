@@ -278,7 +278,7 @@ export async function renderRecordPdf(r: BackupRecord, opts: RenderOptions): Pro
   f.text('Lockbox codes and secret links are hidden in this PDF. record.json hides the links too, and keeps the rest exactly as sent.', { size: 8.5, color: MUTED, gap: 3 });
   if (r.messages.length === 0) f.text('None.', { color: MUTED });
   for (const m of r.messages) {
-    f.text(`${stamp(m.at)}  ·  ${String(m.channel).toLowerCase()}  ·  ${String(m.template).replace(/_/g, ' ')}  ·  to ${m.to ?? 'unknown'}  ·  ${String(m.status).toLowerCase()}`, { bold: true, size: 8.5 });
+    f.text(`${stamp(m.at)}  ·  ${String(m.channel).toLowerCase()}  ·  ${String(m.template).replace(/_/g, ' ')}  ·  ${m.template === 'inbound_reply' ? 'received from the renter' : `to ${m.to ?? 'unknown'}`}  ·  ${String(m.status).toLowerCase()}`, { bold: true, size: 8.5 });
     if (m.subject) f.text(`Subject: ${h(m.subject)}`, { indent: 6, size: 8.5 });
     if (m.body) f.text(h(m.body), { indent: 6, size: 8.5 });
     if (m.error) f.text(`Did not go out: ${h(m.error)}`, { indent: 6, size: 8.5, color: RED });

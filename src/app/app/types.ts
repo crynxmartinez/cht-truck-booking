@@ -1,4 +1,5 @@
 import type { Stage } from '@prisma/client';
+import type { ThreadItem } from '@/lib/conversation';
 
 /** Shapes shared between the board server component and its client children. */
 
@@ -22,6 +23,8 @@ export type CardData = {
   rescheduleAsked: boolean;
   additionalDriver: boolean;
   createdLabel: string;
+  /** A reply from the renter that nobody has opened yet. Set by the Board page. */
+  unread: boolean;
 };
 
 export type DocData = {
@@ -61,18 +64,6 @@ export type ChecklistData = {
   link: string;
 };
 
-export type MessageData = {
-  template: string;
-  channel: string;
-  status: string;
-  sentLabel: string;
-  error: string | null;
-  /** Who it went to (an email address or a phone number), and exactly what it said. */
-  to: string | null;
-  subject: string | null;
-  body: string | null;
-};
-
 export type EventData = {
   type: string;
   detail: string | null;
@@ -96,7 +87,10 @@ export type BookingDetail = {
   documents: DocData[];
   contracts: ContractData[];
   checklists: ChecklistData[];
-  messages: MessageData[];
+  /** The renter's conversation: what we sent and what they replied, oldest first. */
+  thread: ThreadItem[];
+  /** Replies that arrived since someone last opened the conversation. */
+  unread: number;
   events: EventData[];
   /** Set when texts to this renter are blocked (Do Not Disturb or STOP), so the office can record that they asked for texts again. */
   textsBlocked: 'dnd' | 'unsubscribed' | null;

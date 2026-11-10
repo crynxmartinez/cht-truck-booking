@@ -114,6 +114,32 @@ it is stuck.
 
 ---
 
+## The booking window and renters' replies
+
+Clicking a card opens the booking in a window with a menu down the left: **Overview**
+(details, stage, dates, truck), **Conversation**, **Paperwork** (agreements, checklists,
+approvals), **Files** (photos, and the PDF record) and **Activity** (history, notes,
+resend an automatic message).
+
+**Conversation** is a chat of everything sent to the renter (automatic messages and the
+office's own) and everything they reply, with the message box always in view. Sending is
+two steps: **Send** shows exactly what will go and to whom, and **Send now** sends it.
+Staff alerts are never shown here. A reply by email makes the next message default to
+email. The window checks for new replies every 20 seconds while it is open.
+
+A card shows **New reply** until someone opens the conversation; opening it writes a
+`conversation_read` event (hidden from Activity).
+
+Replies arrive through `POST /api/webhooks/ghl?key=<GHL_WEBHOOK_KEY>`. In GoHighLevel:
+Automation > Workflows > new workflow > trigger **Customer Replied** > action **Webhook**
+(method POST, that URL). Each reply is stored once (GoHighLevel's message id is the key, so
+retries do not duplicate), on the renter's newest live booking, or their newest booking if
+none is live. A reply asking to RESCHEDULE or CANCEL also flags the booking for review.
+Replies are kept in the existing message log (template `inbound_reply`), so there is no
+database change.
+
+---
+
 ## Moving cards
 
 A card moves by dragging it to another column (Settings > Board > "Allow dragging cards

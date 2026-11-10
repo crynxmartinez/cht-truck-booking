@@ -13,6 +13,8 @@ const h = vi.hoisted(() => ({
   cancelBooking: vi.fn(),
   moveBooking: vi.fn(),
   findBooking: vi.fn(),
+  createEvent: vi.fn(),
+  loadThread: vi.fn(),
   StaleMoveError: class StaleMoveError extends Error {},
   pending: [] as Array<Promise<unknown>>,
   NoTruckAvailableError: class NoTruckAvailableError extends Error {},
@@ -31,7 +33,8 @@ vi.mock('@/lib/notify', () => ({
   setStage: h.setStage,
 }));
 vi.mock('@/lib/calendar-sync', () => ({ syncBookingToCalendar: h.syncBookingToCalendar }));
-vi.mock('@/lib/db', () => ({ prisma: { booking: { findUnique: h.findBooking } } }));
+vi.mock('@/lib/db', () => ({ prisma: { booking: { findUnique: h.findBooking }, bookingEvent: { create: h.createEvent } } }));
+vi.mock('@/lib/conversation-db', () => ({ loadThread: h.loadThread }));
 vi.mock('@/lib/bookings', () => ({
   cancelBooking: h.cancelBooking,
   completeBooking: vi.fn(),
@@ -43,7 +46,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 // Run the post-response work for real, and keep hold of it so a test can wait.
 vi.mock('next/server', () => ({ after: (fn: () => Promise<unknown>) => h.pending.push(fn()) }));
 
-import { cancel, moveCard, reopen, switchTruck } from './actions';
+import { cancel, getThread, markConversationRead, moveCard, reopen, switchTruck } from './actions';
 
 const moved = { id: 'b1', truck: { code: 'B' }, previousTruckCode: 'A' };
 
@@ -286,5 +289,44 @@ describe('cancel — the office decides whether the renter is told', () => {
     h.cancelBooking.mockResolvedValue(undefined);
     const res = await cancel('b1', 'x', false);
     expect(res.ok && res.message).toMatch(/not messaged|did not message|no message|nobody was told/i);
+  });
+});
+
+describe('the conversation', () => {
+  it('getThread returns the thread for a booking, and nothing for a bad id', async () => {
+    h.loadThread.mockResolvedValue({ items: [], unread: 0 });
+    expect(await getThread('b1')).toEqual({ items: [], unread: 0 });
+    expect(h.loadThread).toHaveBeenCalledWith('b1');
+    h.loadThread.mockClear();
+    expect(await getThread('' as never)).toBeNull();
+    expect(await getThread(42 as never)).toBeNull();
+    expect(h.loadThread).not.toHaveBeenCalled();
+  });
+
+  it('opening it with new replies marks them read, once, and says how many', async () => {
+    h.loadThread.mockResolvedValue({ items: [], unread: 2 });
+    h.createEvent.mockResolvedValue({});
+    expect(await markConversationRead('b1')).toEqual({ ok: true });
+    expect(h.createEvent).toHaveBeenCalledTimes(1);
+    expect(h.createEvent).toHaveBeenCalledWith({ data: { bookingId: 'b1', type: 'conversation_read', detail: '2 new replies read', actor: 'ops' } });
+  });
+
+  it('says "reply" for one', async () => {
+    h.loadThread.mockResolvedValue({ items: [], unread: 1 });
+    await markConversationRead('b1');
+    expect(h.createEvent.mock.calls.at(-1)?.[0].data.detail).toBe('1 new reply read');
+  });
+
+  it('writes nothing when there is nothing new, so opening an old conversation leaves no trace', async () => {
+    h.createEvent.mockClear();
+    h.loadThread.mockResolvedValue({ items: [], unread: 0 });
+    expect(await markConversationRead('b1')).toEqual({ ok: true });
+    expect(h.createEvent).not.toHaveBeenCalled();
+  });
+
+  it('refuses a booking id that is not a string', async () => {
+    h.createEvent.mockClear();
+    expect(await markConversationRead(undefined as never)).toMatchObject({ ok: false });
+    expect(h.createEvent).not.toHaveBeenCalled();
   });
 });

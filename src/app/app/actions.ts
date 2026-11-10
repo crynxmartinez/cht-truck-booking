@@ -19,6 +19,8 @@ import { loadSettings } from '@/lib/settings';
 import { canAddMainAdmin, canStopBeingMainAdmin, type Approver } from '@/lib/approvers';
 import { prepareOfficeMessage, type OfficeMessageInput, type Preview } from '@/lib/office-message';
 import { checkConsent, consentLogLine } from '@/lib/sms-consent';
+import { loadThread } from '@/lib/conversation-db';
+import type { ThreadItem } from '@/lib/conversation';
 import { ackCovers, checkMove, isAck, isBoardStage, type Ack } from '@/lib/stage-moves';
 import { STAGE_LABEL } from '@/lib/stages';
 import { otherChannelsChanged } from '@/lib/sms-block';
@@ -759,6 +761,24 @@ export async function sendOfficeMessage(bookingId: string, raw: unknown): Promis
   revalidatePath('/app');
   const failed = res.errors.length ? ` But: ${res.errors.join(' ')}` : '';
   return { ok: true, message: `Sent by ${via}.${failed}` };
+}
+
+/** The renter's conversation, freshly read. The booking window asks for it after sending, and now and then while it is open. */
+export async function getThread(bookingId: string): Promise<{ items: ThreadItem[]; unread: number } | null> {
+  await actor();
+  if (typeof bookingId !== 'string' || !bookingId) return null;
+  return loadThread(bookingId);
+}
+
+/** Someone has opened the conversation, so the replies in it stop counting as new. Does nothing when there is nothing new. */
+export async function markConversationRead(bookingId: string): Promise<ActionResult> {
+  const who = await actor();
+  if (typeof bookingId !== 'string' || !bookingId) return { ok: false, error: 'That booking was not understood.' };
+  const { unread } = await loadThread(bookingId);
+  if (unread === 0) return { ok: true };
+  await prisma.bookingEvent.create({ data: { bookingId, type: 'conversation_read', detail: `${unread} new repl${unread === 1 ? 'y' : 'ies'} read`, actor: who } });
+  revalidatePath('/app');
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------- recipients

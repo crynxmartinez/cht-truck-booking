@@ -88,6 +88,8 @@ export function Board({
   const [open, setOpen] = useState<BookingDetail | null>(null);
   const [adding, setAdding] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  // Cards whose replies have just been read in an open window, so their flag goes at once rather than after a refresh.
+  const [readIds, setReadIds] = useState<Record<string, true>>({});
   const [, startTransition] = useTransition();
 
   // Cards the server has just moved, shown in their new column until fresh data arrives.
@@ -257,6 +259,7 @@ export function Board({
                   card={c}
                   canDrag={canDrag && !moved[c.id] && !inflight[c.id]}
                   busy={loadingId === c.id || Boolean(inflight[c.id])}
+                  unread={c.unread && !readIds[c.id]}
                   defaultDays={defaultDays}
                   onOpen={() => openCard(c.id)}
                 />
@@ -333,7 +336,16 @@ export function Board({
         />
       ) : null}
 
-      {open ? <BookingModal detail={open} onClose={() => setOpen(null)} /> : null}
+      {open ? (
+        <BookingModal
+          detail={open}
+          onClose={() => setOpen(null)}
+          onRead={(id) => {
+            setReadIds((m) => ({ ...m, [id]: true }));
+            startTransition(() => router.refresh());
+          }}
+        />
+      ) : null}
 
       {dialog ? (
         <MoveDialog
@@ -366,12 +378,14 @@ function DraggableCard({
   card,
   canDrag,
   busy,
+  unread,
   defaultDays,
   onOpen,
 }: {
   card: CardData;
   canDrag: boolean;
   busy: boolean;
+  unread: boolean;
   defaultDays: number;
   onOpen: () => void;
 }) {
@@ -384,6 +398,7 @@ function DraggableCard({
       innerRef={setNodeRef}
       onOpen={onOpen}
       busy={busy}
+      unread={unread}
       dragProps={canDrag ? { ...attributes, ...listeners } : undefined}
     />
   );
@@ -396,6 +411,7 @@ function CardBody({
   innerRef,
   onOpen,
   busy,
+  unread,
   dragProps,
 }: {
   card: CardData;
@@ -404,6 +420,7 @@ function CardBody({
   innerRef?: (el: HTMLElement | null) => void;
   onOpen?: () => void;
   busy?: boolean;
+  unread?: boolean;
   dragProps?: Record<string, unknown>;
 }) {
   return (
@@ -425,6 +442,7 @@ function CardBody({
         ) : (
           <span className="tag red">No truck</span>
         )}
+        {unread ? <span className="tag red">New reply</span> : null}
         {card.overdue ? <span className="tag red">Overdue</span> : null}
         {card.rescheduleAsked ? <span className="tag amber">Reschedule</span> : null}
         {card.needsReview ? <span className="tag blue">Review</span> : null}

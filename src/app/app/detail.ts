@@ -5,6 +5,7 @@ import { swapWindowOpen } from '@/lib/truck-swap';
 import { checklistUrl, signUrl } from '@/lib/tokens';
 import { signedFilePath } from '@/lib/file-urls';
 import { blockedKind } from '@/lib/sms-consent';
+import { loadThread } from '@/lib/conversation-db';
 import type { BookingDetail, CardData, SwapOption } from './types';
 
 /**
@@ -52,6 +53,7 @@ export function toCard(b: BookingRow): CardData {
     rescheduleAsked: b.rescheduleAsked,
     additionalDriver: b.additionalDriverRequested,
     createdLabel: formatStamp(b.createdAt),
+    unread: false,
   };
 }
 
@@ -112,11 +114,13 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
       contracts: { orderBy: { createdAt: 'asc' } },
       checklists: { orderBy: { phase: 'asc' } },
       messages: { orderBy: { createdAt: 'desc' }, take: 40 },
-      events: { orderBy: { createdAt: 'desc' }, take: 60 },
+      // "Conversation read" marks are bookkeeping, not history: they would only crowd real events out.
+      events: { where: { type: { not: 'conversation_read' } }, orderBy: { createdAt: 'desc' }, take: 60 },
     },
   });
   if (!b) return null;
 
+  const thread = await loadThread(b.id);
   const pickupIso = dateToIso(b.pickupDate);
   const rentalDays =
     Math.round((b.blockEnd.getTime() - b.blockStart.getTime()) / 86_400_000) + 1;
@@ -181,16 +185,8 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
       overrideReason: k.overrideReason,
       link: checklistUrl(k.token),
     })),
-    messages: b.messages.map((m) => ({
-      template: m.template,
-      channel: m.channel,
-      status: m.status,
-      sentLabel: formatStamp(m.sentAt ?? m.createdAt),
-      error: m.error,
-      to: m.toAddress,
-      subject: m.subject,
-      body: m.body,
-    })),
+    thread: thread.items,
+    unread: thread.unread,
     textsBlocked: blockedKind(
       b.messages.map((m) => ({
         channel: m.channel,

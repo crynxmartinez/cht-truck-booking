@@ -221,7 +221,7 @@ function Composer({
           ))}
           {preview.preview.subject && preview.preview.recipients.some((r) => r.channel === 'EMAIL') ? (
             <div className="tiny">
-              Subject: <b>{preview.preview.subject}</b>
+              Subject: <span style={{ fontWeight: 600 }}>{preview.preview.subject}</span>
             </div>
           ) : null}
           <div style={{ whiteSpace: 'pre-wrap', margin: '8px 0 4px', padding: '8px 10px', background: '#fff', borderRadius: 6 }}>

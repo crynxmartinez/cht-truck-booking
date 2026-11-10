@@ -58,18 +58,21 @@ export function TextsBlocked({
 
   return (
     <div className="note warn" role="status" style={{ marginTop: 12 }}>
-      <b>Texts to {name} are blocked.</b>{' '}
-      {kind === 'unsubscribed'
-        ? 'They replied STOP, so they have opted out of our texts.'
-        : 'They have Do Not Disturb switched on in GoHighLevel.'}{' '}
-      Email still goes, and you can call them. We do not text past this.
-      {!open ? (
-        <div style={{ marginTop: 8 }}>
+      <div className="blocked-row">
+        <span>
+          <span style={{ fontWeight: 700 }}>Texts to {name} are blocked.</span>{' '}
+          {kind === 'unsubscribed'
+            ? 'They replied STOP, so they have opted out of our texts.'
+            : 'They have Do Not Disturb switched on in GoHighLevel.'}{' '}
+          Email still goes, and you can call them. We do not text past this.
+        </span>
+        {!open ? (
           <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>
             They asked for texts again
           </button>
-        </div>
-      ) : (
+        ) : null}
+      </div>
+      {open ? (
         <div style={{ marginTop: 8 }}>
           <label htmlFor="tb-way">How did {name} ask?</label>
           <select
@@ -137,7 +140,7 @@ export function TextsBlocked({
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

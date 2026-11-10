@@ -1403,3 +1403,9 @@
 
 /* A section that is not showing stays in the page (so its draft survives) but takes no room. */
 .modal-bd[hidden] { display: none !important; }
+
+/* The conversation never gets squeezed to nothing: a tall notice or form scrolls the whole section instead. */
+.convo { overflow-y: auto; }
+.thread { min-height: 150px; }
+.blocked-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.blocked-row > span { flex: 1 1 320px; }

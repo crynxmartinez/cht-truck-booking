@@ -474,6 +474,15 @@ export function BookingModal({
 
           <SendMessage bookingId={c.id} name={c.name} onResult={setFlash} />
 
+          <div className="sect">Record</div>
+          <p className="tiny" style={{ marginTop: 0 }}>
+            A PDF copy of this booking: details, signing record, messages and truck photos. Licence and insurance photos are
+            not shown in it and lockbox codes are hidden, so it is safe to forward.
+          </p>
+          <a className="btn ghost small" href={`/api/admin/bookings/${c.id}/record`} download>
+            Download record (PDF)
+          </a>
+
           <div className="sect">Resend a message</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {RESENDABLE.map((r) => (

@@ -31,10 +31,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     where: { id },
     select: { pathname: true, contentType: true, deletedAt: true },
   });
-  if (!doc || doc.deletedAt) return json({ error: 'That file is no longer stored.' }, { status: 404 });
+  if (!doc || doc.deletedAt) return json({ error: 'This file has been removed from cloud storage. If it was backed up, it is saved on the office computer.' }, { status: 404 });
 
   const blob = await readBlob(doc.pathname);
-  if (!blob) return json({ error: 'That file is no longer stored.' }, { status: 404 });
+  if (!blob) return json({ error: 'This file has been removed from cloud storage. If it was backed up, it is saved on the office computer.' }, { status: 404 });
 
   return new Response(blob.stream, {
     headers: {

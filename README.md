@@ -139,6 +139,31 @@ Cancelling is not a column: it asks for a reason, so it stays in the booking.
 
 ---
 
+## Backing up to the office computer
+
+Renters' licence, insurance and truck photos live in private cloud storage, which has a
+size limit. `npm run backup` (run on the office computer) saves everything to
+`back up\` in the code folder, which Git and Vercel both ignore (a test fails if that ever
+changes, because the repository is public). It only reads from the live system.
+
+- `npm run backup` saves every booking that is new or changed: a `bookings.csv`, and one
+  folder per booking with `record.pdf` (safe to forward: no licence or insurance
+  images, lockbox codes hidden), `record.json` (everything, exactly as stored) and
+  `files\` (the original photos and signed agreements). Nothing already saved is ever
+  overwritten or deleted: a changed file moves aside under a dated name.
+- `npm run backup -- verify` re-reads every saved file and compares its checksum.
+- `npm run backup -- clear` is the only thing that deletes from the cloud, and only after
+  you type the number of files shown. It removes only photos of finished rentals closed
+  at least 30 days ago (`--min-age-days`), never signed agreements, and only files it has
+  just re-checked in the backup folder (and in the second folder, if one is given).
+- `--second "<folder>"` copies everything to a second place too, for example a folder
+  synced by Google Drive for desktop. A synced folder may not have reached Google yet, so
+  check Drive before clearing. After a clear, the backup folders hold the only copy of
+  those photos: keep a second copy.
+- Each booking also has a **Download record (PDF)** button.
+
+---
+
 ## Booking rules
 
 The renter picks the **pickup date first, then the length: 1, 2 or 3 days** (the

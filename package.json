@@ -20,7 +20,8 @@
     "check:invariants": "tsx --env-file=.env scripts/check-invariants.ts",
     "swap:preview": "tsx --env-file=.env scripts/preview-swap.ts",
     "guard:apply": "tsx --env-file=.env scripts/apply-overlap-guard.ts",
-    "guard:verify": "tsx --env-file=.env scripts/verify-overlap-guard.ts"
+    "guard:verify": "tsx --env-file=.env scripts/verify-overlap-guard.ts",
+    "backup": "tsx --env-file=.env scripts/backup.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

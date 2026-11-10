@@ -101,7 +101,7 @@ export default async function MessagesPage() {
           <div className="hint" style={{ marginBottom: 0 }}>
             These are all the messages the system sends by itself. Click one to read its exact wording. The renter is
             called <b>Sample Renter</b> and the links are samples, so nothing here goes to a real person. To see what a
-            real renter was sent, open their booking on the Board and click a message under <b>Messages sent</b>.
+            real renter was sent, open their booking on the Board and look in its <b>Conversation</b> section.
             <br />
             <br />
             <b>You can change what renters are sent.</b> Open a message, change the words, preview it, and save. The

@@ -165,10 +165,11 @@ export default async function SettingsPage() {
             <table className="datatable">
               <tbody>
                 <tr>
-                  <td>Block length</td>
+                  <td>How a rental holds the truck</td>
                   <td>
-                    {config.rentalBlockDays} days from pickup, counting the pickup day. The truck is free again the next
-                    day.
+                    From the pickup day, counting that day, for the length booked. The truck is free again the next day.
+                    A customer chooses 1 to {config.customerMaxDays} days (set above); the office can book up to 30.
+                    When nothing is chosen, {config.rentalBlockDays} days is the usual length.
                   </td>
                 </tr>
                 <tr>

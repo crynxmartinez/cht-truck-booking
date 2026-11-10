@@ -151,7 +151,7 @@ export default async function AttentionPage({
             <h2>Messages that failed</h2>
             <div className="hint">
               Each row says why it failed and what to do. To read exactly what was meant to be sent, open the
-              booking on the <Link href="/app">board</Link> and click the message. A text that is blocked
+              booking on the <Link href="/app">board</Link> and look in its Conversation section. A text that is blocked
               because the person opted out, or has Do Not Disturb on, can never be sent from here: call them.
               When you have dealt with one, or it was only a test, mark it handled. It stays on record and
               you can still see it under <Link href="/app/attention?handled=1">handled</Link>.

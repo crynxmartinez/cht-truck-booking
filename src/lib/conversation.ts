@@ -1,4 +1,4 @@
-import { INBOUND_TEMPLATE } from './inbound';
+import { INBOUND_TEMPLATE, isRenterThreadKey } from './inbound';
 import { toPlain } from './messages';
 
 /**
@@ -65,8 +65,7 @@ export function labelFor(template: string): string {
 }
 
 /** A message in the renter's thread: to or from the renter, never a staff alert. */
-export const inThread = (r: Pick<ThreadRow, 'recipientKey'>) =>
-  r.recipientKey === 'renter' || r.recipientKey.startsWith('office-') || r.recipientKey.startsWith('in:');
+export const inThread = (r: Pick<ThreadRow, 'recipientKey'>) => isRenterThreadKey(r.recipientKey);
 
 /** A send that is still "queued" this long after it was made never finished: shown as one that did not go out. */
 export const STUCK_AFTER_MS = 10 * 60_000;

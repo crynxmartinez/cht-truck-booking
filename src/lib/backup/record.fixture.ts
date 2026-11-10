@@ -33,8 +33,8 @@ export const sampleBooking = (): BookingSource => ({
     { id: 'd3', kind: 'SIGNED_CONTRACT', phase: 'CONTRACT', source: 'RENTER', contentType: 'application/pdf', bytes: 5000, pathname: 'contracts/k1.pdf', originalFilename: null, uploadedBy: null, staffNote: null, createdAt: at('2026-11-01T10:06:00Z'), deletedAt: null },
   ],
   messages: [
-    { template: 'thank_you', channel: 'EMAIL', status: 'SENT', toAddress: 'sample@example.com', subject: 'Thanks', body: 'Thanks!', error: null, sentAt: at('2026-11-24T10:00:00Z'), createdAt: at('2026-11-24T10:00:00Z') },
-    { template: 'contract_to_sign', channel: 'SMS', status: 'SENT', toAddress: '+15555550100', subject: null, body: 'Sign here', error: null, sentAt: at('2026-11-01T09:06:00Z'), createdAt: at('2026-11-01T09:06:00Z') },
+    { recipientKey: 'renter', template: 'thank_you', channel: 'EMAIL', status: 'SENT', toAddress: 'sample@example.com', subject: 'Thanks', body: 'Thanks!', error: null, sentAt: at('2026-11-24T10:00:00Z'), createdAt: at('2026-11-24T10:00:00Z') },
+    { recipientKey: 'renter', template: 'contract_to_sign', channel: 'SMS', status: 'SENT', toAddress: '+15555550100', subject: null, body: 'Sign here', error: null, sentAt: at('2026-11-01T09:06:00Z'), createdAt: at('2026-11-01T09:06:00Z') },
   ],
   events: [
     { type: 'stage_change', detail: 'b', actor: 'ops', createdAt: at('2026-11-02T08:00:00Z') },

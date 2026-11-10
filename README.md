@@ -174,7 +174,7 @@ changes, because the repository is public). It only reads from the live system.
 
 - `npm run backup` saves every booking that is new or changed: a `bookings.csv`, and one
   folder per booking with `record.pdf` (safe to forward: no licence or insurance
-  images, lockbox codes hidden), `record.json` (everything, exactly as stored) and
+  images, lockbox codes hidden), `record.json` (everything about the booking and its conversation with the renter, exactly as stored; staff alerts are left out) and
   `files\` (the original photos and signed agreements). Nothing already saved is ever
   overwritten or deleted: a changed file moves aside under a dated name.
 - `npm run backup -- verify` re-reads every saved file and compares its checksum.

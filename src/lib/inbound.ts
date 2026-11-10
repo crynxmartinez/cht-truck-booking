@@ -80,6 +80,13 @@ export function inboundKey(i: Inbound): string {
   return `in:h:${hash.slice(0, 24)}`;
 }
 
+/**
+ * Is this message-log row part of the conversation with the renter? Staff alerts share the table, keyed by the
+ * staff member's id; the renter's own messages are keyed "renter", the office's own "office-...", replies "in:...".
+ */
+export const isRenterThreadKey = (recipientKey: string): boolean =>
+  recipientKey === 'renter' || recipientKey.startsWith('office-') || recipientKey.startsWith('in:');
+
 export type BookingCandidate = { id: string; stage: string; createdAt: Date; ghlContactId?: string | null };
 
 /**

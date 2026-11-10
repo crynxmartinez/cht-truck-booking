@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isRenterThreadKey } from '../inbound';
 
 /**
  * One booking, as a plain record that can be written to JSON and shown in a PDF.
@@ -56,7 +57,7 @@ export type BookingSource = {
     originalFilename: string | null; uploadedBy: string | null; staffNote: string | null; createdAt: Date; deletedAt: D;
   }>;
   messages: Array<{
-    template: string; channel: string; status: string; toAddress: string | null; subject: string | null; body: string | null;
+    recipientKey: string; template: string; channel: string; status: string; toAddress: string | null; subject: string | null; body: string | null;
     error: string | null; sentAt: D; createdAt: Date;
   }>;
   events: Array<{ type: string; detail: string | null; actor: string | null; createdAt: Date }>;
@@ -164,7 +165,9 @@ export function buildRecord(b: BookingSource): BackupRecord {
       completionSource: k.completionSource, completedBy: k.completedBy, overrideReason: k.overrideReason,
     })),
     files,
-    messages: [...b.messages]
+    // The renter's own conversation only. Staff alerts share the table, and carry team members' emails and phones.
+    messages: b.messages
+      .filter((m) => isRenterThreadKey(m.recipientKey))
       .sort((x, y) => (x.sentAt ?? x.createdAt).getTime() - (y.sentAt ?? y.createdAt).getTime())
       .map((m) => ({
         at: iso(m.sentAt ?? m.createdAt), template: m.template, channel: m.channel, status: m.status,

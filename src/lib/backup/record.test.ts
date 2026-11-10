@@ -37,6 +37,18 @@ describe('buildRecord', () => {
     expect(files.find((f) => f.pathname === 'checklists/c1.pdf')?.label).toBe('Pickup checklist report');
   });
 
+  it('keeps only the renter\'s own conversation: staff alerts, with team members\' contact details, are left out', () => {
+    const b = base();
+    b.messages.push({ recipientKey: 'cmstaff123', template: 'staff_booking_received', channel: 'SMS', status: 'SENT', toAddress: '+15555550199', subject: null, body: 'New booking for the team', error: null, sentAt: at('2026-11-02T00:00:00Z'), createdAt: at('2026-11-02T00:00:00Z') });
+    b.messages.push({ recipientKey: 'office-abc', template: 'office_message', channel: 'EMAIL', status: 'SENT', toAddress: 'sample@example.com', subject: 'Hi', body: 'From the office', error: null, sentAt: at('2026-11-03T00:00:00Z'), createdAt: at('2026-11-03T00:00:00Z') });
+    b.messages.push({ recipientKey: 'in:m1', template: 'inbound_reply', channel: 'SMS', status: 'SENT', toAddress: null, subject: null, body: 'A reply', error: null, sentAt: at('2026-11-04T00:00:00Z'), createdAt: at('2026-11-04T00:00:00Z') });
+    const json = JSON.stringify(buildRecord(b));
+    expect(json).not.toContain('+15555550199');
+    expect(json).not.toContain('New booking for the team');
+    expect(json).toContain('From the office');
+    expect(json).toContain('A reply');
+  });
+
   it('puts messages and events in time order', () => {
     const r = buildRecord(base());
     expect(r.messages.map((m) => m.template)).toEqual(['contract_to_sign', 'thank_you']);

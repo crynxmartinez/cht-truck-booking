@@ -167,6 +167,15 @@ describe('lockbox codes', () => {
     expect(pageText(bytes)).not.toContain('6543');
   });
 
+  it('staff alerts and their phone numbers and emails never reach the PDF', async () => {
+    const b = sampleBooking();
+    b.messages.push({ recipientKey: 'cmstaff123', template: 'staff_booking_received', channel: 'SMS', status: 'SENT', toAddress: '+15555550199', subject: null, body: 'Team alert text', error: null, sentAt: new Date('2026-11-02T00:00:00Z'), createdAt: new Date('2026-11-02T00:00:00Z') });
+    const { bytes } = await renderRecordPdf(buildRecord(b), opts());
+    const text = pageText(bytes);
+    expect(text).not.toContain('5555550199');
+    expect(text).not.toContain('Team alert text');
+  });
+
   it('are not printed in the PDF', async () => {
     const b = sampleBooking();
     b.messages[0].body = 'Hi, Lockbox code: 4821. The lockbox is on the driver side.';

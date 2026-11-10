@@ -12,7 +12,19 @@ export type SafetyResult = { ok: true } | { ok: false; reason: string };
 
 export function insideRepo(root: string, repoRoot: string): boolean {
   const rel = relative(resolve(repoRoot), resolve(root));
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  // "..backup" is a folder INSIDE the repo; only ".." itself or "..\something" leaves it.
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/** Two backup folders must be genuinely separate: the same folder, or one inside the other, is not a second copy. */
+export function foldersOverlap(a: string, b: string): boolean {
+  const x = resolve(a).toLowerCase(); // Windows paths are not case sensitive
+  const y = resolve(b).toLowerCase();
+  const within = (inner: string, outer: string) => {
+    const rel = relative(outer, inner);
+    return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+  };
+  return within(x, y) || within(y, x);
 }
 
 export function assertSafeDestination(root: string, repoRoot: string, git: GitRunner): SafetyResult {

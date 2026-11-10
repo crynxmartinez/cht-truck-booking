@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRecord, csvRow, recordFingerprint, CSV_HEADERS, type BookingSource } from './record';
+import { buildRecord, csvRow, recordFingerprint, redactLinks, CSV_HEADERS, type BookingSource } from './record';
 import { sampleBooking } from './record.fixture';
 
 const base = sampleBooking;
@@ -41,6 +41,35 @@ describe('buildRecord', () => {
     const r = buildRecord(base());
     expect(r.messages.map((m) => m.template)).toEqual(['contract_to_sign', 'thank_you']);
     expect(r.events.map((e) => e.type)).toEqual(['created', 'stage_change']);
+  });
+});
+
+const TOKEN = 'AbCdEf0123456789AbCdEf0123456789';
+
+describe('secret links in message text', () => {
+  it('are removed everywhere: message bodies and subjects, notes, event details, what the signer typed', () => {
+    const b = base();
+    b.messages[0].body = `Sign here: [[Read and sign|https://app.example.com/sign/${TOKEN}]] or https://app.example.com/checklist/${TOKEN}`;
+    b.messages[1].subject = `Your link https://app.example.com/api/files/contract/${TOKEN}`;
+    b.checklists[0].notes = `see https://app.example.com/checklist/${TOKEN}`;
+    b.events[0].detail = `sent /sign/${TOKEN}`;
+    b.contracts[0].payload = { note: `link /sign/${TOKEN}` };
+    const json = JSON.stringify(buildRecord(b));
+    expect(json).not.toContain(TOKEN);
+    expect(json).toContain('/sign/[link removed]');
+    expect(json).toContain('/checklist/[link removed]');
+    expect(json).toContain('/api/files/contract/[link removed]');
+  });
+
+  it('leaves the rest of the message untouched', () => {
+    const b = base();
+    b.messages[0].body = `Hi Sam, sign here https://app.example.com/sign/${TOKEN} before Friday`;
+    const body = buildRecord(b).messages.find((m) => String(m.body).startsWith('Hi Sam'))?.body;
+    expect(body).toBe('Hi Sam, sign here https://app.example.com/sign/[link removed] before Friday');
+  });
+
+  it('redactLinks does not touch short paths that are not secrets', () => {
+    expect(redactLinks('see /sign/up and /checklist/ and /signs/abc')).toBe('see /sign/up and /checklist/ and /signs/abc');
   });
 });
 

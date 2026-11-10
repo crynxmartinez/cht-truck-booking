@@ -63,6 +63,8 @@ export function whyKeep(c: ClearCandidate, o: ClearOptions): KeepReason | null {
 }
 
 export function planClear(candidates: ClearCandidate[], o: ClearOptions): ClearPlan {
+  // NaN or a negative age would make every finished rental look old enough, silently.
+  if (!Number.isFinite(o.minAgeDays) || o.minAgeDays < 0) throw new Error('minAgeDays must be a number of days, zero or more.');
   const clear: ClearCandidate[] = [];
   const counts = new Map<KeepReason, number>();
   for (const c of candidates) {

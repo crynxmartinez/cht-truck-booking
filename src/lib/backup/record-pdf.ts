@@ -59,12 +59,18 @@ export function toDrawable(input: string): { text: string; lossy: boolean } {
  * forwarded. The code is hidden here; record.json keeps the exact text.
  */
 export function hideLockboxCode(text: string, extra: readonly string[] = []): string {
-  // the first token with a digit in it, soon after the words "lockbox code"
-  let out = text.replace(/(lockbox code[^\n]{0,45}?)\b([A-Za-z]*\d[A-Za-z0-9]*)\b/gi, '$1[hidden]');
-  // and the truck's own current code wherever it appears, in case it is worded some other way
-  for (const secret of extra) {
-    if (secret.trim().length >= 3) out = out.split(secret.trim()).join('[hidden]');
+  // First the codes we know: every truck's current code, wherever and however it is worded.
+  // Longest first, and before the pattern below, so a code like 12-34 is hidden whole.
+  let out = text;
+  for (const secret of [...extra].map((s) => s.trim()).filter((s) => s.length >= 3).sort((a, b) => b.length - a.length)) {
+    out = out.split(secret).join('[hidden]');
   }
+  // Then the pattern: the first token with a digit in it, soon after the words lockbox / key box,
+  // or "access / door / gate / entry code".
+  const token = String.raw`\b([A-Za-z]*\d[A-Za-z0-9-]*)\b`;
+  // [\s\S] so a code on the next line is caught too.
+  out = out.replace(new RegExp(String.raw`((?:lock\s?box|key\s?box)[\s\S]{0,45}?)${token}`, 'gi'), '$1[hidden]');
+  out = out.replace(new RegExp(String.raw`((?:access|door|gate|entry|security|box)\s+(?:code|pin|number)[\s\S]{0,30}?)${token}`, 'gi'), '$1[hidden]');
   return out;
 }
 
@@ -164,6 +170,8 @@ const size = (n: number | null) => (n === null ? '' : n >= 1_048_576 ? `${(n / 1
 export async function renderRecordPdf(r: BackupRecord, opts: RenderOptions): Promise<{ bytes: Uint8Array; lossy: boolean }> {
   const f = new Flow();
   await f.init();
+  /** Free text from the record: lockbox codes hidden wherever it appears. */
+  const h = (s: unknown) => hideLockboxCode(String(s ?? ''), opts.hide);
 
   f.text('Booking record', { size: 20, bold: true, gap: 2 });
   f.text(`${r.reference}  ·  ${r.booking.renter}`, { size: 11, color: MUTED, gap: 2 });
@@ -178,8 +186,8 @@ export async function renderRecordPdf(r: BackupRecord, opts: RenderOptions): Pro
   f.row('Booked', stamp(r.booking.createdAt));
   f.row('Completed', stamp(r.booking.completedAt));
   f.row('Cancelled', stamp(r.booking.cancelledAt));
-  f.row('Cancel reason', r.booking.cancelledReason);
-  f.row('Review note', r.booking.reviewNote);
+  f.row('Cancel reason', r.booking.cancelledReason ? h(r.booking.cancelledReason) : null);
+  f.row('Review note', r.booking.reviewNote ? h(r.booking.reviewNote) : null);
 
   f.heading('Renter');
   f.row('Name', r.booking.renter);
@@ -219,10 +227,10 @@ export async function renderRecordPdf(r: BackupRecord, opts: RenderOptions): Pro
     f.text(k.phase === 'PICKUP' ? 'Pickup' : 'Return', { bold: true, gap: 1 });
     f.row('Time reported', k.reportedTime as string | null);
     f.row('Submitted', stamp(k.submittedAt));
-    f.row('Notes', k.notes as string | null);
+    f.row('Notes', k.notes ? h(k.notes) : null);
     f.row('Approved by', k.approvedBy ? `${k.approvedBy}  (${stamp(k.approvedAt)})` : '');
     f.row('Completed by', [k.completionSource, k.completedBy].filter(Boolean).join(' · '));
-    f.row('Override reason', k.overrideReason as string | null);
+    f.row('Override reason', k.overrideReason ? h(k.overrideReason) : null);
     f.y -= 4;
   }
 
@@ -242,44 +250,45 @@ export async function renderRecordPdf(r: BackupRecord, opts: RenderOptions): Pro
   if (opts.photos.length) {
     f.heading('Truck photos');
     const W = (A4.w - 2 * M - 12) / 2;
-    let col = 0;
-    let rowH = 0;
+    // Embed first, so the height of both photos in a row is known before either is drawn.
+    const ready: Array<{ label: string; img: Awaited<ReturnType<typeof f.doc.embedJpg>>; w: number; h: number }> = [];
     for (const p of opts.photos) {
-      let img;
       try {
-        img = await f.doc.embedJpg(p.jpeg);
+        const img = await f.doc.embedJpg(p.jpeg);
+        const ph = Math.min(W * (img.height / img.width), 260);
+        ready.push({ label: p.label, img, h: ph, w: ph === 260 ? 260 * (img.width / img.height) : W });
       } catch {
         f.text(`${p.label}: could not be shown here.`, { color: MUTED });
-        continue;
       }
-      const h = Math.min(W * (img.height / img.width), 260);
-      const w = h === 260 ? 260 * (img.width / img.height) : W;
-      if (col === 0) f.ensure(h + 20);
-      const x = M + col * (W + 12);
-      f.page.drawImage(img, { x, y: f.y - h, width: w, height: h });
-      f.page.drawText(f.draw(p.label).slice(0, 60), { x, y: f.y - h - 9, size: 7.5, font: f.regular, color: MUTED });
-      rowH = Math.max(rowH, h + 16);
-      col = (col + 1) % 2;
-      if (col === 0) { f.y -= rowH; rowH = 0; }
     }
-    if (col !== 0) f.y -= rowH;
+    for (let i = 0; i < ready.length; i += 2) {
+      const pair = ready.slice(i, i + 2);
+      const rowH = Math.max(...pair.map((p) => p.h)) + 16;
+      f.ensure(rowH + 4);
+      pair.forEach((p, col) => {
+        const x = M + col * (W + 12);
+        f.page.drawImage(p.img, { x, y: f.y - p.h, width: p.w, height: p.h });
+        f.page.drawText(f.draw(p.label).slice(0, 60), { x, y: f.y - p.h - 9, size: 7.5, font: f.regular, color: MUTED });
+      });
+      f.y -= rowH;
+    }
   }
 
   f.heading('Messages sent');
-  f.text('Lockbox codes are hidden in this PDF. record.json has the messages exactly as sent.', { size: 8.5, color: MUTED, gap: 3 });
+  f.text('Lockbox codes and secret links are hidden in this PDF. record.json hides the links too, and keeps the rest exactly as sent.', { size: 8.5, color: MUTED, gap: 3 });
   if (r.messages.length === 0) f.text('None.', { color: MUTED });
   for (const m of r.messages) {
     f.text(`${stamp(m.at)}  ·  ${String(m.channel).toLowerCase()}  ·  ${String(m.template).replace(/_/g, ' ')}  ·  to ${m.to ?? 'unknown'}  ·  ${String(m.status).toLowerCase()}`, { bold: true, size: 8.5 });
-    if (m.subject) f.text(`Subject: ${hideLockboxCode(String(m.subject), opts.hide)}`, { indent: 6, size: 8.5 });
-    if (m.body) f.text(hideLockboxCode(String(m.body), opts.hide), { indent: 6, size: 8.5 });
-    if (m.error) f.text(`Did not go out: ${m.error}`, { indent: 6, size: 8.5, color: RED });
+    if (m.subject) f.text(`Subject: ${h(m.subject)}`, { indent: 6, size: 8.5 });
+    if (m.body) f.text(h(m.body), { indent: 6, size: 8.5 });
+    if (m.error) f.text(`Did not go out: ${h(m.error)}`, { indent: 6, size: 8.5, color: RED });
     f.y -= 3;
   }
 
   f.heading('Activity');
   if (r.events.length === 0) f.text('None.', { color: MUTED });
   for (const e of r.events) {
-    f.text(`${stamp(e.at)}  ·  ${e.actor ?? ''}  ·  ${String(e.type).replace(/_/g, ' ')}${e.detail ? `  ·  ${e.detail}` : ''}`, { size: 8.5 });
+    f.text(`${stamp(e.at)}  ·  ${e.actor ?? ''}  ·  ${String(e.type).replace(/_/g, ' ')}${e.detail ? `  ·  ${h(e.detail)}` : ''}`, { size: 8.5 });
   }
 
   if (f.lossy) {

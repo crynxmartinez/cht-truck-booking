@@ -60,7 +60,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     fileNames: {},
     cloudOnly: true,
     generatedAt: new Date(),
-    hide: booking.truck?.lockboxCode ? [booking.truck.lockboxCode] : [],
+    // every truck's code, not just this booking's: a code may have changed, or the truck been swapped
+    hide: (await prisma.truck.findMany({ select: { lockboxCode: true } })).map((t) => t.lockboxCode).filter(Boolean),
   });
 
   const safeRef = booking.reference.replace(/[^A-Za-z0-9-]/g, '');

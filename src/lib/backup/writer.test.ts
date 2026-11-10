@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { backupBooking, emptyManifest, intactPaths, loadManifest, mirror, saveManifest, verifyRoot, writeIndex, writeVersioned, type Deps } from './writer';
+import { backupBooking, emptyManifest, fileIsIntact, intactPaths, loadManifest, mirror, saveManifest, verifyRoot, writeIndex, writeVersioned, type Deps } from './writer';
 import { sampleBooking } from './record.fixture';
 
 let root: string;
@@ -47,9 +47,15 @@ afterEach(async () => {
 });
 
 // the sample has d2 removed from the cloud already; make a variant where nothing is
-const live = () => {
+const unsized = () => {
   const b = sampleBooking();
   b.documents.forEach((d) => (d.deletedAt = null));
+  return b;
+};
+// the sizes storage recorded at upload match what the cloud really holds
+const live = () => {
+  const b = unsized();
+  for (const d of b.documents) d.bytes = CLOUD[d.pathname]?.byteLength ?? d.bytes;
   return b;
 };
 
@@ -171,6 +177,73 @@ describe('backupBooking', () => {
   });
 });
 
+describe('a download that is the wrong size', () => {
+  it('is not saved, and is reported as missing, so it can never count as a good copy', async () => {
+    const m = emptyManifest();
+    // the sample records d1 as 1000 bytes; the download is shorter
+    const r = await backupBooking(root, unsized(), deps(), m);
+    expect(r.missing).toEqual(expect.arrayContaining(['docs/d1.webp', 'docs/d2.webp']));
+    expect(Object.keys(r.entry.files)).not.toContain('docs/d1.webp');
+    expect((await intactPaths(root, m)).has('docs/d1.webp')).toBe(false);
+  });
+
+  it('is saved when it is exactly the size storage says', async () => {
+    const m = emptyManifest();
+    const b = live();
+    b.documents.find((d) => d.id === 'd1')!.bytes = CLOUD['docs/d1.webp'].byteLength;
+    const r = await backupBooking(root, b, deps(), m);
+    expect(Object.keys(r.entry.files)).toContain('docs/d1.webp');
+  });
+});
+
+describe('a file that could not be fetched last time', () => {
+  const sized = () => {
+    const b = live();
+    for (const d of b.documents) d.bytes = CLOUD[d.pathname]?.byteLength ?? d.bytes;
+    return b;
+  };
+
+  it('is tried again next run, and saved when it turns up', async () => {
+    const m = emptyManifest();
+    let present = false;
+    const d = deps({ fetchFile: async (p) => (p === 'docs/d1.webp' && !present ? null : CLOUD[p] ?? null) });
+    const first = await backupBooking(root, sized(), d, m);
+    expect(first.missing).toEqual(['docs/d1.webp']);
+    present = true;
+    const second = await backupBooking(root, sized(), d, m);
+    expect(second.status).not.toBe('unchanged');
+    expect(Object.keys(second.entry.files)).toContain('docs/d1.webp');
+  });
+
+  it('does not rewrite the PDF over and over while it is still missing', async () => {
+    const m = emptyManifest();
+    const d = deps({ fetchFile: async (p) => (p === 'docs/d1.webp' ? null : CLOUD[p] ?? null) });
+    const first = await backupBooking(root, sized(), d, m);
+    const again = await backupBooking(root, sized(), d, m);
+    expect(again.status).toBe('unchanged');
+    const names = await fs.readdir(join(root, first.entry.folder));
+    expect(names.filter((n) => n.startsWith('record.2'))).toEqual([]);
+  });
+});
+
+describe('fileIsIntact', () => {
+  it('re-reads the file: true when it matches, false when changed, shortened or gone', async () => {
+    const m = emptyManifest();
+    const b = live();
+    for (const d of b.documents) d.bytes = CLOUD[d.pathname].byteLength;
+    const r = await backupBooking(root, b, deps(), m);
+    const entry = r.entry.files['docs/d1.webp'];
+    expect(await fileIsIntact(root, r.entry.folder, entry)).toBe(true);
+    const path = join(root, r.entry.folder, 'files', entry.name);
+    await fs.writeFile(path, 'X'.repeat(entry.bytes)); // same size, different content
+    expect(await fileIsIntact(root, r.entry.folder, entry)).toBe(false);
+    await fs.writeFile(path, 'short');
+    expect(await fileIsIntact(root, r.entry.folder, entry)).toBe(false);
+    await fs.rm(path);
+    expect(await fileIsIntact(root, r.entry.folder, entry)).toBe(false);
+  });
+});
+
 describe('verifyRoot', () => {
   it('passes a clean folder', async () => {
     const m = emptyManifest();
@@ -283,6 +356,14 @@ describe('mirror', () => {
     await mirror(root, second, now);
     expect((await fs.readdir(second)).filter((n) => n.startsWith('bookings'))).toEqual(['bookings.csv']);
     expect(await fs.readFile(join(second, 'bookings.csv'), 'utf8')).toBe('v2');
+  });
+
+  it('replaces the log in place too, instead of collecting a dated copy per run', async () => {
+    await fs.writeFile(join(root, 'backup-log.txt'), 'run 1\n');
+    await mirror(root, second, now);
+    await fs.writeFile(join(root, 'backup-log.txt'), 'run 1\nrun 2\n');
+    await mirror(root, second, now);
+    expect((await fs.readdir(second)).filter((n) => n.startsWith('backup-log'))).toEqual(['backup-log.txt']);
   });
 
   it('does not copy temporary files', async () => {

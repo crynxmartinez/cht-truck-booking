@@ -4,10 +4,16 @@ import { createHash } from 'node:crypto';
  * One booking, as a plain record that can be written to JSON and shown in a PDF.
  *
  * Deliberately left out: the secret tokens in the signing and checklist links
- * (anyone holding one can open that page), and the drawn signature images
- * (large, and the signed PDF already carries them). Everything else a person
- * would want after the cloud copy is gone is here.
+ * (anyone holding one can open that page, and the checklist page shows the
+ * lockbox code), both as fields and wherever a message's text repeats the link,
+ * and the drawn signature images (large, and the signed PDF already carries
+ * them). Everything else a person would want after the cloud copy is gone is here.
  */
+
+/** A secret link is a credential, not content: the address stays, the secret part goes. */
+export function redactLinks(text: string): string {
+  return text.replace(/(\/(?:sign|checklist|api\/files\/contract)\/)[A-Za-z0-9_-]{16,}/g, '$1[link removed]');
+}
 
 type D = Date | null;
 
@@ -133,7 +139,7 @@ export function buildRecord(b: BookingSource): BackupRecord {
     }
   }
 
-  return {
+  const record: BackupRecord = {
     reference: b.reference,
     generatedFor: 'backup',
     booking: {
@@ -168,6 +174,10 @@ export function buildRecord(b: BookingSource): BackupRecord {
       .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())
       .map((e) => ({ at: e.createdAt.toISOString(), type: e.type, detail: e.detail, actor: e.actor })),
   };
+
+  // Every piece of free text (message bodies, notes, event details, what the signer typed) is
+  // scrubbed in one pass, so a link cannot slip through by turning up somewhere unexpected.
+  return JSON.parse(redactLinks(JSON.stringify(record))) as BackupRecord;
 }
 
 /** Stable fingerprint of what the record says, so a later run can tell whether anything changed. */

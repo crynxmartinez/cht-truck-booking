@@ -34,6 +34,8 @@ export type Deps = {
   /** A shrunk JPEG for the PDF, or null if the image cannot be read. */
   toJpeg: (image: Buffer) => Promise<Uint8Array | null>;
   now: () => Date;
+  /** Lockbox codes of every truck, to hide in the PDF (a code may have changed, or the truck been swapped). */
+  hide?: string[];
 };
 
 const sha256 = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
@@ -104,7 +106,17 @@ export async function backupBooking(root: string, source: BookingSource, deps: D
       }
       if (!intact) break;
     }
-    if (intact) return { status: 'unchanged', entry: prev, filesWritten: 0, missing: prev.missing, lossy: false };
+    // A file that could not be fetched last time is tried again. If it is still not there, nothing
+    // has changed, and nothing is rewritten.
+    if (intact) {
+      let fetchedNow = false;
+      for (const pathname of prev.missing) {
+        const again = await deps.fetchFile(pathname);
+        const wanted = record.files.find((x) => x.pathname === pathname);
+        if (again && (wanted?.bytes == null || again.byteLength === wanted.bytes)) fetchedNow = true;
+      }
+      if (!fetchedNow) return { status: 'unchanged', entry: prev, filesWritten: 0, missing: prev.missing, lossy: false };
+    }
   }
 
   const files: Record<string, FileEntry> = { ...(prev?.files ?? {}) };
@@ -127,7 +139,9 @@ export async function backupBooking(root: string, source: BookingSource, deps: D
     }
 
     const data = await deps.fetchFile(f.pathname);
-    if (!data) {
+    // A download shorter or longer than the size recorded when it was uploaded is damaged:
+    // it is not saved, so it can never later count as a good copy.
+    if (!data || (f.bytes !== null && data.byteLength !== f.bytes)) {
       missing.push(f.pathname);
       continue;
     }
@@ -147,7 +161,7 @@ export async function backupBooking(root: string, source: BookingSource, deps: D
   const fileNames: Record<string, string> = {};
   for (const [pathname, e] of Object.entries(files)) fileNames[pathname] = `files/${e.name}`;
 
-  const { bytes: pdf, lossy } = await renderRecordPdf(record, { photos, fileNames, generatedAt: deps.now(), hide: source.truck?.lockboxCode ? [source.truck.lockboxCode] : [] });
+  const { bytes: pdf, lossy } = await renderRecordPdf(record, { photos, fileNames, generatedAt: deps.now(), hide: [...(deps.hide ?? []), ...(source.truck?.lockboxCode ? [source.truck.lockboxCode] : [])] });
   const json = Buffer.from(JSON.stringify(record, null, 2), 'utf8');
   const a = await writeVersioned(join(dir, 'record.json'), json, deps.now());
   await writeVersioned(join(dir, 'record.pdf'), pdf, deps.now());
@@ -203,6 +217,16 @@ export async function verifyRoot(root: string, manifest: Manifest): Promise<{ ch
   return { checked, problems };
 }
 
+/** Is this one saved file still there with the size and checksum it was saved with? Re-reads it from disk. */
+export async function fileIsIntact(root: string, folder: string, f: FileEntry): Promise<boolean> {
+  try {
+    const data = await fs.readFile(join(root, folder, 'files', f.name));
+    return data.byteLength === f.bytes && sha256(data) === f.sha256;
+  } catch {
+    return false;
+  }
+}
+
 /** Cloud paths whose saved copy in `root` was just re-read and matches its checksum. */
 export async function intactPaths(root: string, manifest: Manifest): Promise<Set<string>> {
   const bad = new Set((await verifyRoot(root, manifest)).problems.map((p) => `${p.reference}/${p.file}`));
@@ -214,7 +238,7 @@ export async function intactPaths(root: string, manifest: Manifest): Promise<Set
 }
 
 /** Files rebuilt from the data on every run. Keeping a dated copy of each would only pile up. */
-const DERIVED = new Set(['bookings.csv', 'manifest.json']);
+const DERIVED = new Set(['bookings.csv', 'manifest.json', 'backup-log.txt']);
 
 async function replaceIfDifferent(path: string, data: Uint8Array): Promise<'written' | 'same' | 'replaced'> {
   if (await exists(path)) {

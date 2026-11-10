@@ -61,6 +61,15 @@ describe('whyKeep', () => {
   });
 });
 
+describe('an age that is not a number', () => {
+  it.each([Number.NaN, -1, Number.POSITIVE_INFINITY * -1])('is refused rather than switching the age rule off (%s)', (n) => {
+    expect(() => planClear([doc()], opts({ minAgeDays: n }))).toThrow(/minAgeDays/);
+  });
+  it('allows zero days', () => {
+    expect(() => planClear([doc()], opts({ minAgeDays: 0 }))).not.toThrow();
+  });
+});
+
 describe('planClear', () => {
   it('plans only the files that pass every test, and counts the rest by reason', () => {
     const plan = planClear(

@@ -8,9 +8,12 @@
 const BOM = '﻿';
 const FORMULA_START = /^[=+\-@\t\r]/;
 
+/** +, then digits only: a phone number, which cannot do anything when opened. */
+const PLAIN_PHONE = /^\+\d{6,15}$/;
+
 export function csvCell(value: unknown): string {
   let s = value === null || value === undefined ? '' : String(value);
-  if (FORMULA_START.test(s)) s = `'${s}`;
+  if (FORMULA_START.test(s) && !PLAIN_PHONE.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

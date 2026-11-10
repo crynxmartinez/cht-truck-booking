@@ -12,12 +12,16 @@ describe('csvCell', () => {
     expect(csvCell(undefined)).toBe('');
   });
 
-  it.each(['=1+1', '+19515550100', '-5', '@SUM(A1)', '=HYPERLINK("http://evil","x")', '\t=1', '\r=1'])(
+  it.each(['=1+1', '-5', '@SUM(A1)', '+1+1', '+12', '+1 (555) 1+1', '=HYPERLINK("http://evil","x")', '\t=1', '\r=1'])(
     'turns a possible formula into plain text: %j',
     (v) => {
       expect(csvCell(v).replace(/^"/, '').startsWith("'")).toBe(true);
     },
   );
+
+  it('leaves a plain phone number as it is, so the Phone column is clean', () => {
+    expect(csvCell('+19515550100')).toBe('+19515550100');
+  });
 
   it('quotes commas, quotes and line breaks', () => {
     expect(csvCell('a,b')).toBe('"a,b"');

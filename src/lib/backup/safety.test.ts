@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertSafeDestination, insideRepo, type GitRunner } from './safety';
+import { assertSafeDestination, foldersOverlap, insideRepo, type GitRunner } from './safety';
 
 const REPO = 'C:\\Code\\chtsystemtruck';
 
@@ -20,6 +20,30 @@ describe('insideRepo', () => {
     expect(insideRepo('C:\\Code\\chtsystemtruck-other\\x', REPO)).toBe(false);
     expect(insideRepo(`${REPO}\\..\\elsewhere`, REPO)).toBe(false);
     expect(insideRepo('G:\\My Drive\\CHT Truck Backups', REPO)).toBe(false);
+  });
+});
+
+describe('a folder whose name starts with two dots', () => {
+  it('is inside the repo, not outside it', () => {
+    expect(insideRepo(`${REPO}\\..backup`, REPO)).toBe(true);
+    expect(assertSafeDestination(`${REPO}\\..backup`, REPO, git({ ignored: false }))).toMatchObject({ ok: false });
+  });
+});
+
+describe('foldersOverlap', () => {
+  it('says the same folder is not a second copy, however it is spelt', () => {
+    expect(foldersOverlap('C:\\a\\b', 'C:\\a\\b')).toBe(true);
+    expect(foldersOverlap('C:\\a\\b', 'c:\\A\\B\\')).toBe(true);
+    expect(foldersOverlap('C:\\a\\b', 'C:\\a\\x\\..\\b')).toBe(true);
+  });
+  it('says one folder inside the other is not a second copy either', () => {
+    expect(foldersOverlap('C:\\a\\b', 'C:\\a\\b\\c')).toBe(true);
+    expect(foldersOverlap('C:\\a\\b\\c', 'C:\\a\\b')).toBe(true);
+  });
+  it('allows genuinely separate folders, including look-alike names', () => {
+    expect(foldersOverlap('C:\\a\\b', 'G:\\My Drive\\x')).toBe(false);
+    expect(foldersOverlap('C:\\a\\b', 'C:\\a\\bc')).toBe(false);
+    expect(foldersOverlap('C:\\a\\b', 'C:\\a\\..b')).toBe(false);
   });
 });
 

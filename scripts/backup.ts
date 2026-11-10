@@ -8,9 +8,9 @@ import { prisma } from '../src/lib/db';
 import { measureUsage } from '../src/lib/storage';
 import { planClear, type ClearCandidate } from '../src/lib/backup/plan-clear';
 import type { BookingSource } from '../src/lib/backup/record';
-import { assertSafeDestination, type GitRunner } from '../src/lib/backup/safety';
+import { assertSafeDestination, foldersOverlap, type GitRunner } from '../src/lib/backup/safety';
 import {
-  backupBooking, emptyManifest, intactPaths, loadManifest, mirror, saveManifest, verifyRoot, writeIndex, type Deps,
+  backupBooking, emptyManifest, fileIsIntact, intactPaths, loadManifest, mirror, saveManifest, verifyRoot, writeIndex, type Deps, type Manifest,
 } from '../src/lib/backup/writer';
 
 /**
@@ -41,6 +41,7 @@ const dest = resolve(flag('dest') ?? join(REPO, 'back up'));
 const secondRaw = flag('second') ?? process.env.BACKUP_SECOND;
 const second = secondRaw ? resolve(secondRaw) : null;
 const minAgeDays = Number(flag('min-age-days') ?? 30);
+const singleCopy = args.includes('--single-copy');
 
 const git: GitRunner = (a) => {
   try {
@@ -90,6 +91,10 @@ const deps: Deps = {
 const mb = (n: number) => `${(n / 1_048_576).toFixed(1)} MB`;
 
 async function guardFolders() {
+  if (!Number.isFinite(minAgeDays) || minAgeDays < 0) stop('--min-age-days must be a number of days, zero or more.');
+  if (second && foldersOverlap(dest, second)) {
+    stop('The second folder must be a different place from the backup folder (not the same folder, and not inside it or around it).');
+  }
   for (const folder of [dest, ...(second ? [second] : [])]) {
     const safe = assertSafeDestination(folder, REPO, git);
     if (!safe.ok) stop(safe.reason);
@@ -101,6 +106,7 @@ async function run() {
   await guardFolders();
   const manifest = await loadManifest(dest);
   const sources = await loadSources();
+  deps.hide = (await prisma.truck.findMany({ select: { lockboxCode: true } })).map((t) => t.lockboxCode).filter(Boolean);
   console.log(`Saving ${sources.length} bookings to ${dest}${dryRun ? '  (dry run: nothing will be written)' : ''}`);
 
   if (dryRun) {
@@ -121,7 +127,13 @@ async function run() {
     await saveManifest(dest, manifest); // after each booking, so an interrupted run loses nothing
     if (r.status !== 'unchanged') console.log(`  [${i}/${sources.length}] ${r.entry.reference} ${r.status}, ${r.filesWritten} file(s)`);
   }
-  await writeIndex(dest, sources, manifest);
+  try {
+    await writeIndex(dest, sources, manifest);
+  } catch (err) {
+    // usually the spreadsheet is open in Excel; everything else is already saved
+    console.error(`  Could not update bookings.csv (is it open in Excel?): ${err instanceof Error ? err.message : err}`);
+    process.exitCode = 1;
+  }
   await saveManifest(dest, manifest);
 
   const check = await verifyRoot(dest, manifest);
@@ -162,7 +174,12 @@ async function verify() {
 
 async function clear() {
   await guardFolders();
-  if (!second) console.log('No second folder given. A second copy (for example a Google Drive folder) is strongly advised.\n');
+  if (!second && !singleCopy) {
+    stop(
+      'No second folder given. After a clear, the backup folder holds the only copy of those photos.\n' +
+        'Add --second "<folder>" (for example your Google Drive folder), or --single-copy if you really want only one copy.',
+    );
+  }
   const manifest = await loadManifest(dest);
 
   const verifiedFirst = await intactPaths(dest, manifest);
@@ -190,13 +207,33 @@ async function clear() {
       '\nIf the second folder is Google Drive, open Drive in a browser first and check the files are really there.',
   );
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  if (second) {
+    const synced = (await rl.question('Is the second folder fully uploaded (open Google Drive in a browser and look)? Type yes: ')).trim().toLowerCase();
+    if (synced !== 'yes') {
+      rl.close();
+      stop('cancelled. Nothing was removed.');
+    }
+  }
   const answer = (await rl.question(`Type ${plan.clear.length} to remove them, anything else to cancel: `)).trim();
   rl.close();
   if (answer !== String(plan.clear.length)) stop('cancelled. Nothing was removed.');
 
+  // The checks above may be minutes old. Each file is checked again, from disk, right before it is deleted.
+  const saved = new Map<string, { folder: string; entry: Manifest['bookings'][string]['files'][string] }>();
+  for (const b of Object.values(manifest.bookings)) {
+    for (const [pathname, entry] of Object.entries(b.files)) saved.set(pathname, { folder: b.folder, entry });
+  }
+
   const perBooking = new Map<string, number>();
   let removed = 0;
+  let skipped = 0;
   for (const c of plan.clear) {
+    const s = saved.get(c.pathname);
+    if (!s || !(await fileIsIntact(dest, s.folder, s.entry)) || (second && !(await fileIsIntact(second, s.folder, s.entry)))) {
+      skipped += 1;
+      console.error(`  kept ${c.reference ?? ''} ${c.documentId}: its saved copy changed or went missing since the check`);
+      continue;
+    }
     try {
       await del(c.pathname);
     } catch (err) {
@@ -216,7 +253,7 @@ async function clear() {
       data: { bookingId, type: 'files_saved_offsite', detail: `${n} file(s) removed from cloud storage after being saved on the office computer`, actor: 'backup' },
     });
   }
-  console.log(`\nRemoved ${removed} of ${plan.clear.length} file(s).`);
+  console.log(`\nRemoved ${removed} of ${plan.clear.length} file(s)${skipped ? `; ${skipped} kept because their saved copy no longer matched` : ''}.`);
   await printUsage();
 }
 

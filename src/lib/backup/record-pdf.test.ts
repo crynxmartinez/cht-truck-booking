@@ -70,6 +70,15 @@ describe('renderRecordPdf', () => {
     expect(Buffer.from(bytes).toString('latin1')).not.toContain('SECRET-SIGN-TOKEN');
   });
 
+  it('keeps a tall photo after a short one on the same page without running off it', async () => {
+    const wide = await sharp({ create: { width: 800, height: 200, channels: 3, background: { r: 10, g: 120, b: 10 } } }).jpeg().toBuffer();
+    const tall = await sharp({ create: { width: 200, height: 800, channels: 3, background: { r: 10, g: 10, b: 120 } } }).jpeg().toBuffer();
+    const photos = Array.from({ length: 8 }, (_, i) => ({ label: `P${i}`, jpeg: i % 2 ? tall : wide }));
+    const { bytes } = await renderRecordPdf(buildRecord(sampleBooking()), opts({ photos }));
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBeGreaterThan(1);
+  });
+
   it('shows truck photos when given them', async () => {
     const jpeg = await sharp({ create: { width: 400, height: 300, channels: 3, background: { r: 200, g: 50, b: 50 } } }).jpeg().toBuffer();
     const { bytes } = await renderRecordPdf(buildRecord(sampleBooking()), opts({ photos: [{ label: 'Cargo photo (pickup)', jpeg }, { label: 'Exterior (pickup)', jpeg }, { label: 'Third', jpeg }] }));
@@ -131,6 +140,31 @@ describe('lockbox codes', () => {
     expect(hideLockboxCode('The lockbox is on the driver side window. Keys go back in the lockbox.')).toBe(
       'The lockbox is on the driver side window. Keys go back in the lockbox.',
     );
+  });
+
+  it('are hidden when the wording changed, when on the next line, and for odd codes', () => {
+    expect(hideLockboxCode('Your access code is 4821')).toBe('Your access code is [hidden]');
+    expect(hideLockboxCode('The box code: 4821')).toBe('The box code: [hidden]');
+    expect(hideLockboxCode('Lockbox: 4821')).toBe('Lockbox: [hidden]');
+    expect(hideLockboxCode('lock box 4821')).toBe('lock box [hidden]');
+    expect(hideLockboxCode('Lockbox code:\n4821')).toBe('Lockbox code:\n[hidden]');
+    // a code with a dash is hidden whole when the truck's codes are known, not left as "-34"
+    expect(hideLockboxCode('Lockbox code 12-34 ok', ['12-34'])).toBe('Lockbox code [hidden] ok');
+    expect(hideLockboxCode('Lockbox code 12-34 ok')).toBe('Lockbox code [hidden] ok');
+  });
+
+  it('hides every truck\'s code, not only the booking\'s own, so a swapped or changed code is covered', () => {
+    expect(hideLockboxCode('Old truck was 7777, new is 8888', ['8888', '7777'])).toBe('Old truck was [hidden], new is [hidden]');
+  });
+
+  it('hides the code in notes, events and errors, not only message bodies', async () => {
+    const b = sampleBooking();
+    b.checklists[0].notes = 'renter says lockbox code 6543 did not work';
+    b.events[0].detail = 'told renter door code 6543';
+    b.messages[0].error = 'could not send: lockbox code 6543';
+    b.reviewNote = 'box code 6543';
+    const { bytes } = await renderRecordPdf(buildRecord(b), opts());
+    expect(pageText(bytes)).not.toContain('6543');
   });
 
   it('are not printed in the PDF', async () => {

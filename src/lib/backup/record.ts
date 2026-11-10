@@ -170,7 +170,9 @@ export function buildRecord(b: BookingSource): BackupRecord {
         at: iso(m.sentAt ?? m.createdAt), template: m.template, channel: m.channel, status: m.status,
         to: m.toAddress, subject: m.subject, body: m.body, error: m.error,
       })),
-    events: [...b.events]
+    // "Conversation read" marks are bookkeeping, not history.
+    events: b.events
+      .filter((e) => e.type !== 'conversation_read')
       .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())
       .map((e) => ({ at: e.createdAt.toISOString(), type: e.type, detail: e.detail, actor: e.actor })),
   };

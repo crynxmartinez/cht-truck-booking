@@ -48,12 +48,14 @@ export async function POST(req: Request) {
       where: { OR: identifiers },
       orderBy: { createdAt: 'desc' },
       take: 20,
-      select: { id: true, reference: true, stage: true, createdAt: true, rescheduleAsked: true },
+      select: { id: true, reference: true, stage: true, createdAt: true, rescheduleAsked: true, ghlContactId: true },
     }),
+    reply.contactId,
   );
   if (!booking) return json({ ok: true, ignored: 'no matching booking' });
 
   // Stored once per reply: GoHighLevel retries land on the same key.
+  let duplicate = false;
   try {
     await prisma.messageLog.create({
       data: {
@@ -70,8 +72,10 @@ export async function POST(req: Request) {
       },
     });
   } catch (err) {
-    if ((err as { code?: string }).code === 'P2002') return json({ ok: true, duplicate: true, reference: booking.reference });
-    throw err;
+    if ((err as { code?: string }).code !== 'P2002') throw err;
+    // Already stored. Carry on to the flag step below: if the first attempt stored the reply and then failed
+    // before flagging, this retry is the chance to flag it, and the step does nothing the second time.
+    duplicate = true;
   }
 
   const inPlay = booking.stage !== 'COMPLETED' && booking.stage !== 'CANCELLED';
@@ -79,8 +83,10 @@ export async function POST(req: Request) {
     await prisma.booking.update({ where: { id: booking.id }, data: { rescheduleAsked: true, needsReview: true } });
     await logEvent(booking.id, 'reschedule_requested', reply.message.slice(0, 500), 'renter');
     await notifyStaff(booking.id, 'reschedule_requested', { detail: reply.message.slice(0, 200) });
-    return json({ ok: true, stored: true, flagged: 'reschedule', reference: booking.reference });
+    return json({ ok: true, stored: !duplicate, duplicate, flagged: 'reschedule', reference: booking.reference });
   }
 
-  return json({ ok: true, stored: true, reference: booking.reference });
+  return duplicate
+    ? json({ ok: true, duplicate: true, reference: booking.reference })
+    : json({ ok: true, stored: true, reference: booking.reference });
 }

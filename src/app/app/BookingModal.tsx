@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import type { Stage } from '@prisma/client';
 import { STAGE_LABEL } from '@/lib/stages';
 import type { Ack } from '@/lib/stage-moves';
@@ -57,10 +57,14 @@ export function BookingModal({
     };
   }, [onClose]);
 
+  // Each look gets a number, and only the newest look is used: a slow poll that started before a send must
+  // not land afterwards and make the message just sent vanish.
+  const lookNumber = useRef(0);
   const refreshThread = useCallback(async () => {
+    const mine = ++lookNumber.current;
     try {
       const t = await getThread(c.id);
-      if (t) setThread(t);
+      if (t && mine === lookNumber.current) setThread(t);
     } catch {
       /* a missed poll is fine; the next one tries again */
     }
@@ -183,24 +187,35 @@ export function BookingModal({
               </div>
             ) : null}
 
-            <div className={`modal-bd${tab === 'conversation' ? ' flush' : ''}`}>
-              {tab === 'overview' ? <OverviewPanel {...panelProps} /> : null}
-              {tab === 'conversation' ? (
-                <Conversation
-                  bookingId={c.id}
-                  name={c.name}
-                  items={thread.items}
-                  textsBlocked={detail.textsBlocked}
-                  onResult={setFlash}
-                  onSent={(r) => {
-                    setFlash(r);
-                    void refreshThread();
-                  }}
-                />
-              ) : null}
-              {tab === 'paperwork' ? <PaperworkPanel {...panelProps} /> : null}
-              {tab === 'files' ? <FilesPanel {...panelProps} /> : null}
-              {tab === 'activity' ? <ActivityPanel {...panelProps} /> : null}
+            {/* Every section stays mounted and the others are hidden, so what was typed, or half-filled in, is still there when you come back. */}
+            <div className="modal-bd" hidden={tab !== 'overview'}>
+              <OverviewPanel {...panelProps} />
+            </div>
+            <div className="modal-bd flush" hidden={tab !== 'conversation'}>
+              <Conversation
+                bookingId={c.id}
+                name={c.name}
+                items={thread.items}
+                textsBlocked={detail.textsBlocked}
+                timeZone={detail.timeZone}
+                renterPhone={c.phone}
+                renterEmail={c.email}
+                active={tab === 'conversation'}
+                onResult={setFlash}
+                onSent={(r) => {
+                  setFlash(r);
+                  void refreshThread();
+                }}
+              />
+            </div>
+            <div className="modal-bd" hidden={tab !== 'paperwork'}>
+              <PaperworkPanel {...panelProps} />
+            </div>
+            <div className="modal-bd" hidden={tab !== 'files'}>
+              <FilesPanel {...panelProps} />
+            </div>
+            <div className="modal-bd" hidden={tab !== 'activity'}>
+              <ActivityPanel {...panelProps} />
             </div>
           </div>
         </div>

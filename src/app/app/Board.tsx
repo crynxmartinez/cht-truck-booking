@@ -118,6 +118,18 @@ export function Board({
     }),
   );
 
+  // Once the server agrees a card has been read, forget our own note of it, so the flag can come back for the NEXT reply.
+  useEffect(() => {
+    setReadIds((m) => {
+      const next = { ...m };
+      for (const id of Object.keys(next)) {
+        const real = cards.find((c) => c.id === id);
+        if (!real || !real.unread) delete next[id];
+      }
+      return Object.keys(next).length === Object.keys(m).length ? m : next;
+    });
+  }, [cards]);
+
   // Fresh data from the server replaces a pretend position once it agrees with it.
   useEffect(() => {
     setMoved((m) => {

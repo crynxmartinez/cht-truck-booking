@@ -28,6 +28,20 @@ describe('buildThread', () => {
     expect(inThread({ recipientKey: 'cmstaff123' })).toBe(false);
   });
 
+  it('shows a send that is still queued long after it was made as one that did not go out, but not one in progress', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    const t = buildThread(
+      [
+        row({ id: 'fresh', status: 'QUEUED', body: 'being sent', createdAt: at('2026-11-12T11:59:00Z') }),
+        row({ id: 'stuck', status: 'QUEUED', body: 'never finished', createdAt: at('2026-11-12T11:00:00Z'), sentAt: null }),
+      ],
+      [],
+      now,
+    );
+    expect(t.map((i) => i.id)).toEqual(['stuck']);
+    expect(t[0]).toMatchObject({ failed: true, error: expect.stringMatching(/never confirmed/) });
+  });
+
   it('leaves out messages that never went out, but shows ones that failed', () => {
     const t = buildThread([
       row({ status: 'SKIPPED', body: 'skipped' }),

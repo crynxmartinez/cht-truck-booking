@@ -6,6 +6,7 @@ import { checklistUrl, signUrl } from '@/lib/tokens';
 import { signedFilePath } from '@/lib/file-urls';
 import { blockedKind } from '@/lib/sms-consent';
 import { loadThread } from '@/lib/conversation-db';
+import { config } from '@/lib/config';
 import type { BookingDetail, CardData, SwapOption } from './types';
 
 /**
@@ -113,7 +114,8 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
       documents: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } },
       contracts: { orderBy: { createdAt: 'asc' } },
       checklists: { orderBy: { phase: 'asc' } },
-      messages: { orderBy: { createdAt: 'desc' }, take: 40 },
+      // Only what WE sent decides whether texts are blocked; a chatty renter's replies must not crowd it out.
+      messages: { where: { template: { not: 'inbound_reply' } }, orderBy: { createdAt: 'desc' }, take: 40 },
       // "Conversation read" marks are bookkeeping, not history: they would only crowd real events out.
       events: { where: { type: { not: 'conversation_read' } }, orderBy: { createdAt: 'desc' }, take: 60 },
     },
@@ -187,6 +189,7 @@ export async function loadBookingDetail(id: string): Promise<BookingDetail | nul
     })),
     thread: thread.items,
     unread: thread.unread,
+    timeZone: config.timeZone,
     textsBlocked: blockedKind(
       b.messages.map((m) => ({
         channel: m.channel,

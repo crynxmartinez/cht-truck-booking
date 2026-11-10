@@ -68,6 +68,30 @@ describe('reply listener', () => {
     expect(h.logEvent).not.toHaveBeenCalled();
   });
 
+  it('a retry still flags a reschedule request when the first attempt stored the reply but failed before flagging', async () => {
+    h.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+    const res = await call({ contactId: 'c1', message: 'Please reschedule', messageId: 'm9' });
+    expect(await res.json()).toMatchObject({ duplicate: true, flagged: 'reschedule' });
+    expect(h.update).toHaveBeenCalledWith({ where: { id: 'b1' }, data: { rescheduleAsked: true, needsReview: true } });
+  });
+
+  it('a retry does not flag it again once it is flagged', async () => {
+    h.findMany.mockResolvedValue([booking({ rescheduleAsked: true })]);
+    h.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+    await call({ contactId: 'c1', message: 'Please reschedule', messageId: 'm9' });
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.notifyStaff).not.toHaveBeenCalled();
+  });
+
+  it('puts the reply on the booking that belongs to the contact when two bookings share a number', async () => {
+    h.findMany.mockResolvedValue([
+      booking({ id: 'partners', stage: 'IN_USE', createdAt: new Date('2026-11-09'), ghlContactId: 'C-B' }),
+      booking({ id: 'mine', stage: 'CONFIRMED', createdAt: new Date('2026-11-01'), ghlContactId: 'C-A' }),
+    ]);
+    await call({ contactId: 'C-A', phone: '9515550147', message: 'hi', messageId: 'm10' });
+    expect(h.create.mock.calls.at(-1)?.[0].data.bookingId).toBe('mine');
+  });
+
   it('lets any other database failure surface, so GoHighLevel retries', async () => {
     h.create.mockRejectedValueOnce(new Error('connection reset'));
     await expect(call({ contactId: 'c1', message: 'hi', messageId: 'm1' })).rejects.toThrow('connection reset');

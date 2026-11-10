@@ -5,9 +5,8 @@ import type { ThreadItem } from '@/lib/conversation';
 import { previewOfficeMessage, sendOfficeMessage, type ActionResult, type OfficePreviewResult } from '../actions';
 import { TextsBlocked } from '../TextsBlocked';
 
-const TZ = 'America/Los_Angeles';
-const dayLabel = (iso: string) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: TZ });
-const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TZ });
+const dayLabel = (iso: string, tz: string) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz });
+const timeLabel = (iso: string, tz: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
 
 /** Long messages (the agreement email, say) start folded so the thread stays readable. */
 const FOLD_CHARS = 320;
@@ -24,12 +23,23 @@ export function Conversation({
   name,
   items,
   textsBlocked,
+  timeZone,
+  renterPhone,
+  renterEmail,
+  active,
   onSent,
   onResult,
 }: {
   bookingId: string;
   name: string;
   items: ThreadItem[];
+  /** The office's time zone, the same one the rest of the CRM uses. */
+  timeZone: string;
+  /** The renter's own number and address: a message to anyone else says who it went to. */
+  renterPhone: string;
+  renterEmail: string;
+  /** This section is the one showing. It stays mounted when it is not, so a half-written message survives a look elsewhere. */
+  active: boolean;
   textsBlocked: 'dnd' | 'unsubscribed' | null;
   /** Called after a message goes out, so the window can reload the thread. */
   onSent: (r: ActionResult) => void;
@@ -37,6 +47,8 @@ export function Conversation({
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const lastCount = useRef(0);
+  // Whether the reader was at the bottom BEFORE the newest message was drawn: measuring afterwards fails for a tall one.
+  const atBottom = useRef(true);
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
   // Newest at the bottom. Follow new messages unless the reader has scrolled up to look at older ones.
@@ -44,10 +56,21 @@ export function Conversation({
     const el = scroller.current;
     if (!el) return;
     const first = lastCount.current === 0;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
-    if (first || (items.length > lastCount.current && nearBottom)) el.scrollTop = el.scrollHeight;
+    if (first || (items.length > lastCount.current && atBottom.current)) {
+      el.scrollTop = el.scrollHeight;
+      atBottom.current = true;
+    }
     lastCount.current = items.length;
   }, [items.length]);
+
+  // Coming back to the conversation lands on the newest message, as if it had just opened.
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (active && el) {
+      el.scrollTop = el.scrollHeight;
+      atBottom.current = true;
+    }
+  }, [active]);
 
   // The renter's last reply decides how the next message goes: by email if they wrote by email, else by text.
   const lastReply = [...items].reverse().find((i) => i.dir === 'in');
@@ -56,14 +79,24 @@ export function Conversation({
   let lastDay = '';
   return (
     <div className="convo">
-      <div className="thread" ref={scroller} role="log" aria-label={`Conversation with ${name}`} tabIndex={0}>
+      <div
+        className="thread"
+        ref={scroller}
+        role="log"
+        aria-label={`Conversation with ${name}`}
+        tabIndex={0}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+        }}
+      >
         {items.length === 0 ? (
           <p className="tiny" style={{ margin: 'auto', textAlign: 'center', maxWidth: 320 }}>
             No messages yet. What we send {name} and what they reply will show here.
           </p>
         ) : null}
         {items.map((m) => {
-          const day = dayLabel(m.at);
+          const day = dayLabel(m.at, timeZone);
           const showDay = day !== lastDay;
           lastDay = day;
           const long = isLong(m.text);
@@ -73,8 +106,9 @@ export function Conversation({
               {showDay ? <div className="day-sep">{day}</div> : null}
               <div className={`bubble ${m.dir}${m.from === 'office' ? ' office' : ''}${m.failed ? ' failed' : ''}`}>
                 <span className="meta">
-                  {m.dir === 'in' ? 'Reply' : m.label} &middot; {m.channel === 'EMAIL' ? 'email' : 'text'} &middot; {timeLabel(m.at)}
+                  {m.dir === 'in' ? 'Reply' : m.label} &middot; {m.channel === 'EMAIL' ? 'email' : 'text'} &middot; {timeLabel(m.at, timeZone)}
                   {m.dir === 'out' && m.from === 'auto' ? ' · automatic' : ''}
+                  {m.dir === 'out' && m.to && m.to !== renterPhone && m.to !== renterEmail ? ` · to ${m.to}` : ''}
                 </span>
                 {m.subject ? <b className="subj">{m.subject}</b> : null}
                 <div className={folded ? 'body clamp' : 'body'}>{m.text}</div>

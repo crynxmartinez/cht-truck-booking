@@ -71,6 +71,31 @@ describe('inboundKey', () => {
     expect(inboundKey(other2)).not.toBe(inboundKey(a));
   });
 
+  it('does not mistake the contact id for the message id: two replies from one contact are two replies', () => {
+    // a workflow payload with a bare top-level "id" that is the contact's own
+    const first = parseInbound({ id: 'C1', contact_id: 'C1', message: 'first', dateAdded: '2026-11-12T17:00:00Z' }, NOW)!;
+    const second = parseInbound({ id: 'C1', contact_id: 'C1', message: 'second', dateAdded: '2026-11-12T17:01:00Z' }, NOW)!;
+    expect(first.messageId).toBeNull();
+    expect(inboundKey(first)).not.toBe(inboundKey(second));
+    const sameText = parseInbound({ id: 'C1', contact_id: 'C1', message: 'Yes', dateAdded: '2026-11-12T17:00:05Z' }, NOW)!;
+    const sameTextLater = parseInbound({ id: 'C1', contact_id: 'C1', message: 'Yes', dateAdded: '2026-11-12T17:00:40Z' }, NOW)!;
+    expect(inboundKey(sameText)).not.toBe(inboundKey(sameTextLater)); // two quick "Yes" replies are two replies
+  });
+
+  it('an id with nothing usable in it falls back to the hash, never the shared key "in:"', () => {
+    const a = parseInbound({ contactId: 'c1', message: 'one', messageId: '###', dateAdded: '2026-11-12T17:00:00Z' }, NOW)!;
+    const b = parseInbound({ contactId: 'c1', message: 'two', messageId: '###', dateAdded: '2026-11-12T17:00:01Z' }, NOW)!;
+    expect(inboundKey(a)).toMatch(/^in:h:/);
+    expect(inboundKey(a)).not.toBe(inboundKey(b));
+  });
+
+  it('a retry carries the same time in the payload, so it lands on the same key even across a minute boundary', () => {
+    const body = { contactId: 'c1', message: 'ok', dateAdded: '2026-11-12T17:59:58Z' };
+    const a = parseInbound(body, new Date('2026-11-12T17:59:59Z'))!;
+    const retry = parseInbound(body, new Date('2026-11-12T18:00:30Z'))!;
+    expect(inboundKey(retry)).toBe(inboundKey(a));
+  });
+
   it('is short and made of safe characters', () => {
     expect(inboundKey(parseInbound({ contactId: 'c1', message: 'ok' }, NOW)!)).toMatch(/^in:h:[0-9a-f]{24}$/);
   });
@@ -89,6 +114,20 @@ describe('pickBooking', () => {
 
   it('returns null for no candidates', () => {
     expect(pickBooking([])).toBeNull();
+  });
+
+  it('when bookings share a phone or email, prefers the one that belongs to the contact who wrote', () => {
+    const mine = { ...b('mine', 'CONFIRMED', 1), ghlContactId: 'C-A' };
+    const partners = { ...b('partners', 'IN_USE', 9), ghlContactId: 'C-B' };
+    expect(pickBooking([mine, partners], 'C-A')?.id).toBe('mine');
+    expect(pickBooking([mine, partners], 'C-B')?.id).toBe('partners');
+  });
+
+  it('falls back to all candidates when no booking has that contact, or no contact was given', () => {
+    const x = { ...b('x', 'CONFIRMED', 1), ghlContactId: 'C-A' };
+    const y = { ...b('y', 'IN_USE', 9), ghlContactId: 'C-B' };
+    expect(pickBooking([x, y], 'C-ZZ')?.id).toBe('y');
+    expect(pickBooking([x, y])?.id).toBe('y');
   });
 });
 

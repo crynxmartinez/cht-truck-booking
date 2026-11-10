@@ -1400,3 +1400,6 @@
   .modal.split .modal-bd { height: min(62vh, 560px); }
   .bubble { max-width: 92%; }
 }
+
+/* A section that is not showing stays in the page (so its draft survives) but takes no room. */
+.modal-bd[hidden] { display: none !important; }

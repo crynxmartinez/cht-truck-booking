@@ -91,6 +91,8 @@ export type BookingDetail = {
   thread: ThreadItem[];
   /** Replies that arrived since someone last opened the conversation. */
   unread: number;
+  /** The office's time zone, so the conversation shows the same times as everywhere else. */
+  timeZone: string;
   events: EventData[];
   /** Set when texts to this renter are blocked (Do Not Disturb or STOP), so the office can record that they asked for texts again. */
   textsBlocked: 'dnd' | 'unsubscribed' | null;

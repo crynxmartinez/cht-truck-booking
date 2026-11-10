@@ -68,11 +68,17 @@ export function labelFor(template: string): string {
 export const inThread = (r: Pick<ThreadRow, 'recipientKey'>) =>
   r.recipientKey === 'renter' || r.recipientKey.startsWith('office-') || r.recipientKey.startsWith('in:');
 
-export function buildThread(rows: ThreadRow[], legacy: LegacyReply[] = []): ThreadItem[] {
+/** A send that is still "queued" this long after it was made never finished: shown as one that did not go out. */
+export const STUCK_AFTER_MS = 10 * 60_000;
+
+export function buildThread(rows: ThreadRow[], legacy: LegacyReply[] = [], now: Date = new Date()): ThreadItem[] {
   const items: ThreadItem[] = [];
 
   for (const r of rows) {
-    if (!inThread(r) || r.status === 'SKIPPED' || r.status === 'QUEUED') continue;
+    if (!inThread(r) || r.status === 'SKIPPED') continue;
+    const stuck = r.status === 'QUEUED' && now.getTime() - r.createdAt.getTime() > STUCK_AFTER_MS;
+    // A message being sent right now is not in the thread yet; one that never finished is.
+    if (r.status === 'QUEUED' && !stuck) continue;
     const inbound = r.template === INBOUND_TEMPLATE;
     const channel = r.channel === 'EMAIL' ? 'EMAIL' : 'SMS';
     items.push({
@@ -85,8 +91,8 @@ export function buildThread(rows: ThreadRow[], legacy: LegacyReply[] = []): Thre
       subject: r.subject,
       // Our own emails carry [[Button|link]] markup; read it as plain words.
       text: r.body === null || r.body === '' ? 'The text of this message was not saved.' : inbound ? r.body : toPlain(r.body),
-      failed: r.status === 'FAILED',
-      error: r.error,
+      failed: r.status === 'FAILED' || stuck,
+      error: stuck ? (r.error ?? 'It was never confirmed as sent.') : r.error,
       to: inbound ? null : r.toAddress,
     });
   }

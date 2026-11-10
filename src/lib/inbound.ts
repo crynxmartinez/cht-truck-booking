@@ -20,6 +20,8 @@ export type Inbound = {
   channel: 'SMS' | 'EMAIL';
   messageId: string | null;
   at: Date;
+  /** True when the time came from the payload itself, so a retry carries exactly the same one. */
+  atFromPayload: boolean;
 };
 
 type Obj = Record<string, unknown>;
@@ -54,9 +56,12 @@ export function parseInbound(body: unknown, now: Date = new Date()): Inbound | n
     message: text.slice(0, MAX_REPLY_LENGTH),
     subject: first(b.subject, message.subject).trim().slice(0, 300) || null,
     channel: kind.includes('email') ? 'EMAIL' : 'SMS',
-    messageId: first(b.messageId, b.message_id, message.id, b.id).trim().slice(0, 80) || null,
+    // Only fields that are clearly the message's own. A bare top-level "id" can be the contact's, and
+    // keying on it would make a renter's second reply look like a repeat of their first.
+    messageId: first(b.messageId, b.message_id, message.id).trim().slice(0, 80) || null,
     // A date from the future (or nonsense) is not trusted: the reply is shown as arriving now.
     at: when && !Number.isNaN(when.getTime()) && when.getTime() <= now.getTime() + 5 * 60_000 ? when : now,
+    atFromPayload: Boolean(when && !Number.isNaN(when.getTime()) && when.getTime() <= now.getTime() + 5 * 60_000),
   };
 }
 
@@ -65,20 +70,28 @@ export function parseInbound(body: unknown, now: Date = new Date()): Inbound | n
  * when there is one; otherwise who, what and the minute, so a retry lands on the same key.
  */
 export function inboundKey(i: Inbound): string {
-  if (i.messageId) return `in:${i.messageId.replace(/[^A-Za-z0-9_-]/g, '')}`;
-  const minute = i.at.toISOString().slice(0, 16);
-  const hash = createHash('sha1').update([i.contactId, i.phone, i.email, i.message, minute].join('|')).digest('hex');
+  const clean = i.messageId ? i.messageId.replace(/[^A-Za-z0-9_-]/g, '') : '';
+  // An id with nothing usable left in it must not become the key "in:", which every such reply would share.
+  if (clean) return `in:${clean}`;
+  // No message id: who, what and when. The time in the payload when there is one (a retry carries the
+  // same), otherwise the minute it reached us.
+  const when = i.atFromPayload ? i.at.toISOString() : i.at.toISOString().slice(0, 16);
+  const hash = createHash('sha1').update([i.contactId, i.phone, i.email, i.message, when].join('|')).digest('hex');
   return `in:h:${hash.slice(0, 24)}`;
 }
 
-export type BookingCandidate = { id: string; stage: string; createdAt: Date };
+export type BookingCandidate = { id: string; stage: string; createdAt: Date; ghlContactId?: string | null };
 
 /**
- * Which booking a reply belongs to: the newest one still in play, otherwise the newest of all, so a
- * reply after the rental ended still lands somewhere a person will see it.
+ * Which booking a reply belongs to. When bookings share a phone number or email (a couple, or a
+ * renter with two bookings), the GoHighLevel contact is the strongest sign of who wrote, so those
+ * come first. Among them: the newest still in play, otherwise the newest of all, so a reply after
+ * the rental ended still lands somewhere a person will see it.
  */
-export function pickBooking<T extends BookingCandidate>(candidates: T[]): T | null {
-  const newestFirst = [...candidates].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+export function pickBooking<T extends BookingCandidate>(candidates: T[], contactId = ''): T | null {
+  const strong = contactId ? candidates.filter((c) => c.ghlContactId === contactId) : [];
+  const pool = strong.length ? strong : candidates;
+  const newestFirst = [...pool].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   return newestFirst.find((c) => c.stage !== 'COMPLETED' && c.stage !== 'CANCELLED') ?? newestFirst[0] ?? null;
 }
 
